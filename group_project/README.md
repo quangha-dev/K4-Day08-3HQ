@@ -83,6 +83,7 @@ Xem code mẫu (DeepEval/RAGAS/TruLens) chi tiết trong `README.md` gốc mục
 | | | | |
 | | | | |
 | | | | |
+| Vũ Văn Huy|2A202601342|Báo cáo kết quả đánh giá RAGAS và giải thích vì sao Hybrid Search + RRF đạt hiệu năng cao hơn Dense-only.|Hoàn thành|
 
 ---
 
