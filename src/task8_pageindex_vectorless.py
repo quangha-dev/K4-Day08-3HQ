@@ -8,7 +8,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from rank_bm25 import BM25Okapi
 
-from pageindex import PageIndexClient
+from pageindex import PageIndexAPIError, PageIndexClient
 
 load_dotenv()
 
@@ -43,6 +43,14 @@ def _tokenize(text: str) -> list[str]:
     return re.findall(r"\w+", text.lower(), flags=re.UNICODE)
 
 
+def _first_not_none(item: dict, *keys: str):
+    for key in keys:
+        value = item.get(key)
+        if value is not None:
+            return value
+    return None
+
+
 def _normalize_completed_results(retrieval: dict, document_id: str, source_file: str) -> list[dict]:
     """Normalize only a confirmed successful PageIndex retrieval response."""
     results = []
@@ -53,7 +61,8 @@ def _normalize_completed_results(retrieval: dict, document_id: str, source_file:
                 if not content or len(results) >= MAX_CANDIDATES_PER_DOCUMENT:
                     continue
                 rank = len(results) + 1
-                page = item.get("page") or item.get("page_number") or item.get("page_label")
+                page = _first_not_none(item, "page", "page_number", "page_label")
+                section = _first_not_none(item, "section_title", "title")
                 results.append(
                     {
                         "content": content,
@@ -65,7 +74,7 @@ def _normalize_completed_results(retrieval: dict, document_id: str, source_file:
                             "document_id": document_id,
                             "source_file": source_file,
                             "page": page,
-                            "section": item.get("section_title") or item.get("title") or "",
+                            "section": "" if section is None else section,
                             "pageindex_rank": rank,
                         },
                     }
@@ -91,34 +100,63 @@ def _retrieve_document(client: PageIndexClient, document_id: str, query: str, so
 
 
 def _global_rank(query: str, candidates: list[dict], top_k: int) -> list[dict]:
-    """Locally rank PageIndex passages across PDFs; local PageIndex rank is a tie-breaker."""
+    """Globally rank PageIndex passages by local BM25, not PageIndex rank."""
     if not candidates or top_k <= 0:
         return []
     tokens = _tokenize(query)
     if not tokens:
         return []
     query_terms = set(tokens)
-    scores = BM25Okapi([_tokenize(item["content"]) for item in candidates]).get_scores(tokens)
+    bm25_scores = BM25Okapi([_tokenize(item["content"]) for item in candidates]).get_scores(tokens)
     ranked = []
-    for candidate, score in zip(candidates, scores):
+    for candidate, bm25_score in zip(candidates, bm25_scores):
         result = dict(candidate)
         result["metadata"] = dict(candidate["metadata"])
-        result["metadata"]["lexical_coverage"] = len(query_terms.intersection(_tokenize(candidate["content"]))) / len(query_terms)
-        result["score"] = float(score)
+        coverage = len(query_terms.intersection(_tokenize(candidate["content"]))) / len(query_terms)
+        result["metadata"]["lexical_coverage"] = coverage
+        result["score"] = float(bm25_score)
         result["score_type"] = "pageindex_global_bm25"
         result["raw_scores"] = {
-            "pageindex": {"score": float(score), "score_type": "pageindex_global_bm25"}
+            "pageindex": {"score": float(bm25_score), "score_type": "pageindex_global_bm25"},
+            "lexical_coverage": {"score": coverage, "score_type": "fraction"},
         }
         ranked.append(result)
     return sorted(
         ranked,
         key=lambda item: (
-            -item["metadata"]["lexical_coverage"],
             -item["score"],
+            -item["metadata"]["lexical_coverage"],
             item["metadata"]["pageindex_rank"],
             item["metadata"]["document_id"],
         ),
     )[:top_k]
+
+
+def _candidate_key(candidate: dict) -> tuple:
+    metadata = candidate["metadata"]
+    return (metadata["document_id"], metadata["pageindex_rank"], candidate["content"])
+
+
+def _fairly_bound_candidates(query: str, per_document: list[list[dict]]) -> list[dict]:
+    """Let each PDF nominate one result before filling spare global capacity round-robin."""
+    limit = MAX_GLOBAL_CANDIDATES
+    primaries = [candidates[0] for candidates in per_document if candidates]
+    if len(primaries) > limit:
+        return _global_rank(query, primaries, limit)
+
+    selected = _global_rank(query, primaries, len(primaries))
+    selected_keys = {_candidate_key(candidate) for candidate in selected}
+    for rank_index in range(1, max((len(candidates) for candidates in per_document), default=0)):
+        for candidates in per_document:
+            if len(selected) >= limit:
+                return selected
+            if rank_index >= len(candidates):
+                continue
+            candidate = candidates[rank_index]
+            if _candidate_key(candidate) not in selected_keys:
+                selected.append(candidate)
+                selected_keys.add(_candidate_key(candidate))
+    return selected
 
 
 def upload_documents() -> dict[str, str]:
@@ -148,13 +186,15 @@ def pageindex_search(query: str, top_k: int = 5) -> list[dict]:
 
     source_files = {document_id: name for name, document_id in _cached_document_ids().items()}
     client = PageIndexClient(api_key=PAGEINDEX_API_KEY)
-    candidates = []
+    per_document = []
     for document_id in document_ids:
         try:
-            candidates.extend(_retrieve_document(client, document_id, query, source_files.get(document_id, document_id)))
-        except Exception:
-            # One failed document must not discard completed results from others.
+            per_document.append(
+                _retrieve_document(client, document_id, query, source_files.get(document_id, document_id))
+            )
+        except PageIndexAPIError:
+            # One API-failed document must not discard completed results from others.
+            per_document.append([])
             continue
-        if len(candidates) >= MAX_GLOBAL_CANDIDATES:
-            break
-    return _global_rank(query, candidates[:MAX_GLOBAL_CANDIDATES], top_k)
+    candidates = _fairly_bound_candidates(query, per_document)
+    return _global_rank(query, candidates, top_k)

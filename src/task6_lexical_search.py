@@ -9,6 +9,8 @@ from rank_bm25 import BM25Okapi
 STANDARDIZED_DIR = Path(__file__).parent.parent / "data" / "standardized"
 MAX_CHUNK_CHARS = 1_000
 MIN_CHUNK_CHARS = 24
+MAX_HEADING_CONTEXT_CHARS = min(200, MAX_CHUNK_CHARS // 4)
+MIN_BODY_BUDGET = min(200, MAX_CHUNK_CHARS // 4)
 CORPUS: list[dict] | None = None  # Optional application/test override.
 
 _CACHED_CORPUS: list[dict] | None = None
@@ -50,7 +52,7 @@ def _split_oversized(text: str, limit: int) -> list[str]:
     remaining = text.strip()
     while len(remaining) > limit:
         boundary = max(remaining.rfind("\n", 0, limit + 1), remaining.rfind(" ", 0, limit + 1))
-        if boundary <= 0:
+        if boundary <= 0 or boundary < limit // 2:
             boundary = limit
         parts.append(remaining[:boundary].strip())
         remaining = remaining[boundary:].strip()
@@ -59,15 +61,45 @@ def _split_oversized(text: str, limit: int) -> list[str]:
     return parts
 
 
+def _split_body(text: str, limit: int) -> list[str]:
+    """Prefer paragraph boundaries before the deterministic hard splitter."""
+    parts: list[str] = []
+    current = ""
+    for paragraph in re.split(r"\n\s*\n", text.strip()):
+        paragraph = paragraph.strip()
+        if not paragraph:
+            continue
+        combined = f"{current}\n\n{paragraph}".strip() if current else paragraph
+        if len(combined) <= limit:
+            current = combined
+            continue
+        if current:
+            parts.append(current)
+            current = ""
+        parts.extend(_split_oversized(paragraph, limit))
+    if current:
+        parts.append(current)
+    return parts
+
+
+def _bounded_heading_context(heading_path: str) -> str:
+    if len(heading_path) <= MAX_HEADING_CONTEXT_CHARS:
+        return heading_path
+    marker = " … "
+    remaining = MAX_HEADING_CONTEXT_CHARS - len(marker)
+    leading = remaining // 2
+    return f"{heading_path[:leading].rstrip()}{marker}{heading_path[-(remaining - leading):].lstrip()}"
+
+
 def _markdown_chunks(text: str, relative_path: str) -> list[dict]:
     """Split Markdown by heading while retaining its active heading hierarchy."""
     sections: list[tuple[list[str], str]] = []
     headings: list[str] = []
     body: list[str] = []
 
-    def flush() -> None:
+    def flush(include_empty_heading: bool = False) -> None:
         content = "\n".join(body).strip()
-        if content:
+        if content or (include_empty_heading and headings):
             sections.append((list(headings), content))
 
     for line in text.splitlines():
@@ -79,37 +111,31 @@ def _markdown_chunks(text: str, relative_path: str) -> list[dict]:
         body = []
         level = len(match.group(1))
         headings = headings[: level - 1] + [f"{'#' * level} {match.group(2)}"]
-    flush()
+    flush(include_empty_heading=True)
 
-    rendered: list[str] = []
+    rendered: list[tuple[str, str, str]] = []
     for context, body_text in sections:
-        prefix = "\n".join(context)
-        available = max(1, MAX_CHUNK_CHARS - len(prefix) - (2 if prefix else 0))
-        for part in _split_oversized(body_text, available):
-            rendered.append(f"{prefix}\n\n{part}".strip() if prefix else part)
-
-    chunks: list[str] = []
-    pending_small = ""
-    for content in rendered:
-        if len(content) < MIN_CHUNK_CHARS:
-            if chunks:
-                chunks[-1] = f"{chunks[-1]}\n\n{content}"
-            else:
-                pending_small = f"{pending_small}\n\n{content}".strip()
-        elif pending_small:
-            chunks.append(f"{pending_small}\n\n{content}")
-            pending_small = ""
-        else:
-            chunks.append(content)
-    if pending_small:
-        chunks.append(pending_small)
+        heading_path = "\n".join(context)
+        prefix = _bounded_heading_context(heading_path)
+        if not body_text:
+            rendered.append((prefix, heading_path, prefix))
+            continue
+        available = MAX_CHUNK_CHARS - len(prefix) - (2 if prefix else 0)
+        available = max(MIN_BODY_BUDGET, available)
+        for part in _split_body(body_text, available):
+            content = f"{prefix}\n\n{part}".strip() if prefix else part
+            rendered.append((content, heading_path, prefix))
 
     return [
         {
             "content": content,
-            "metadata": {"chunk_id": f"{relative_path}#chunk-{index}"},
+            "metadata": {
+                "chunk_id": f"{relative_path}#chunk-{index}",
+                "heading_path": heading_path,
+                "heading_context": heading_context,
+            },
         }
-        for index, content in enumerate(chunks)
+        for index, (content, heading_path, heading_context) in enumerate(rendered)
         if content.strip()
     ]
 
