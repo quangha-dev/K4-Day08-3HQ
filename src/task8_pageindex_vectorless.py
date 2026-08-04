@@ -42,7 +42,10 @@ PAGEINDEX_DOCUMENT_IDS = tuple(
 def _cached_document_ids() -> dict[str, str]:
     if not DOCUMENT_IDS_PATH.exists():
         return {}
-    return json.loads(DOCUMENT_IDS_PATH.read_text(encoding="utf-8"))
+    try:
+        return json.loads(DOCUMENT_IDS_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
 
 
 def _configured_document_ids() -> tuple[str, ...]:
@@ -58,11 +61,17 @@ def _extract_results(retrieval: dict, top_k: int, document_id: str) -> list[dict
             for item in group:
                 content = item.get("relevant_content", "").strip()
                 if content:
+                    rank_position = len(results) + 1
                     results.append(
                         {
                             "content": content,
-                            "score": 1.0 / (len(results) + 1),
-                            "metadata": {"document_id": document_id, "section": item.get("section_title", "")},
+                            "score": 1.0 / rank_position,
+                            "score_type": "pageindex_rank",
+                            "metadata": {
+                                "document_id": document_id,
+                                "section": item.get("section_title", ""),
+                                "rank_position": rank_position,
+                            },
                             "source": "pageindex",
                         }
                     )
@@ -102,6 +111,7 @@ def pageindex_search(query: str, top_k: int = 5) -> list[dict]:
         List of {
             'content': str,
             'score': float,
+            'score_type': 'pageindex_rank',
             'metadata': dict,
             'source': 'pageindex'   # Đánh dấu nguồn retrieval
         }
@@ -113,18 +123,25 @@ def pageindex_search(query: str, top_k: int = 5) -> list[dict]:
     client = PageIndexClient(api_key=PAGEINDEX_API_KEY)
     all_results = []
     for document_id in document_ids:
-        response = client.submit_query(document_id, query)
-        retrieval_id = response.get("retrieval_id") or response["id"]
-        deadline = time.monotonic() + 60
-        while time.monotonic() < deadline:
-            retrieval = client.get_retrieval(retrieval_id)
-            results = _extract_results(retrieval, top_k, document_id)
-            if results:
-                all_results.extend(results)
-                break
-            if retrieval.get("status") in ("failed", "cancelled", "error"):
-                break
-            time.sleep(2)
+        try:
+            response = client.submit_query(document_id, query)
+            retrieval_id = response.get("retrieval_id") or response["id"]
+            deadline = time.monotonic() + 60
+            while time.monotonic() < deadline:
+                retrieval = client.get_retrieval(retrieval_id)
+                status = retrieval.get("status", "").lower()
+                if status == "completed" or (status not in ("failed", "cancelled", "error") and "retrieved_nodes" in retrieval):
+                    results = _extract_results(retrieval, top_k, document_id)
+                    if results:
+                        all_results.extend(results)
+                    break
+                if status in ("failed", "cancelled", "error"):
+                    break
+                time.sleep(2)
+        except Exception as e:
+            print(f"⚠ PageIndex error for doc {document_id}: {e}")
+            continue
+
     return sorted(all_results, key=lambda r: r["score"], reverse=True)[:top_k]
 
 

@@ -17,14 +17,13 @@ BM25 hoạt động thế nào:
 
 import re
 from pathlib import Path
-
 from rank_bm25 import BM25Okapi
 
 STANDARDIZED_DIR = Path(__file__).parent.parent / "data" / "standardized"
-CORPUS: list[dict] = []  # List of {'content': str, 'metadata': dict}
+CORPUS: list[dict] = []  # Global override if provided
 
-_CACHED_BM25 = None
-_CACHED_CORPUS_ID = None
+_CACHED_CORPUS: list[dict] | None = None
+_CACHED_BM25: BM25Okapi | None = None
 
 
 def _tokenize(text: str) -> list[str]:
@@ -32,13 +31,17 @@ def _tokenize(text: str) -> list[str]:
 
 
 def _load_corpus() -> list[dict]:
+    global _CACHED_CORPUS
+    if _CACHED_CORPUS is not None:
+        return _CACHED_CORPUS
+
     corpus = []
     # Sort files deterministically
     for file in sorted(STANDARDIZED_DIR.rglob("*.md")):
         text = file.read_text(encoding="utf-8").strip()
         if not text:
             continue
-        # Split markdown by sections/paragraphs for finer granularity
+        relative_path = file.relative_to(STANDARDIZED_DIR).as_posix()
         sections = [s.strip() for s in text.split("\n\n") if s.strip()]
         for idx, sec in enumerate(sections):
             corpus.append(
@@ -46,11 +49,13 @@ def _load_corpus() -> list[dict]:
                     "content": sec,
                     "metadata": {
                         "source": file.name,
+                        "relative_path": relative_path,
                         "type": file.parent.name,
-                        "chunk_id": f"{file.name}#section-{idx}",
+                        "chunk_id": f"{relative_path}#section-{idx}",
                     },
                 }
             )
+    _CACHED_CORPUS = corpus
     return corpus
 
 
@@ -65,11 +70,13 @@ def build_bm25_index(corpus: list[dict]):
 
 
 def _get_bm25_index(corpus: list[dict]):
-    global _CACHED_BM25, _CACHED_CORPUS_ID
-    corpus_id = id(corpus)
-    if _CACHED_BM25 is None or _CACHED_CORPUS_ID != corpus_id:
+    global _CACHED_BM25, _CACHED_CORPUS
+    if CORPUS:
+        # Dynamic corpus passed by caller
+        return build_bm25_index(corpus)
+
+    if _CACHED_BM25 is None:
         _CACHED_BM25 = build_bm25_index(corpus)
-        _CACHED_CORPUS_ID = corpus_id
     return _CACHED_BM25
 
 
@@ -85,6 +92,7 @@ def lexical_search(query: str, top_k: int = 10) -> list[dict]:
         List of {
             'content': str,
             'score': float,      # BM25 score
+            'score_type': 'bm25',
             'metadata': dict
         }
         Sorted by score descending.
@@ -100,6 +108,7 @@ def lexical_search(query: str, top_k: int = 10) -> list[dict]:
         {
             "content": doc["content"],
             "score": float(score),
+            "score_type": "bm25",
             "metadata": dict(doc.get("metadata", {})),
         }
         for doc, score in zip(corpus, scores)
