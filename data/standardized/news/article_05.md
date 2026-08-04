@@ -1,0 +1,53 @@
+---
+schema_version: "1.0"
+document_id: "news:article_05"
+title: "[Cảnh báo lừa đảo] Nên và không nên làm để tránh nhận phải đơn hàng ảo/giả mạo | Shopee Trung tâm trợ giúp"
+document_type: "news"
+category: "fraud_prevention"
+customer_role: "buyer"
+platform: "Shopee Vietnam"
+language: "vi"
+source_url: "https://help.shopee.vn/portal/4/article/79564-%5BC%E1%BA%A3nh-b%C3%A1o-l%E1%BB%ABa-%C4%91%E1%BA%A3o%5D-N%C3%AAn-v%C3%A0-kh%C3%B4ng-n%C3%AAn-l%C3%A0m-%C4%91%E1%BB%83-tr%C3%A1nh-nh%E1%BA%ADn-ph%E1%BA%A3i-%C4%91%C6%A1n-h%C3%A0ng-%E1%BA%A3o%2Fgi%E1%BA%A3-m%E1%BA%A1o?previousPage=secondary%20category"
+source_file: "article_05.json"
+date_crawled: "2026-08-04T07:38:36.635676+00:00"
+tags: ["lừa đảo", "đơn hàng giả mạo"]
+---
+
+# [Cảnh báo lừa đảo] Nên và không nên làm để tránh nhận phải đơn hàng ảo/giả mạo | Shopee Trung tâm trợ giúp
+
+## Xin chào, Shopee có thể giúp gì cho bạn?
+### [Cảnh báo lừa đảo] Nên và không nên làm để tránh nhận phải đơn hàng ảo/giả mạo
+**1. Nên và không nên làm gì khi nhận hàng Shopee?**
+Để đảm bảo an toàn khi mua sắm, Shopee lưu ý bạn một số điểm sau:  
+| **Nên**  | **Không Nên**  |  
+| --- | --- |  
+|  Chỉ nhận đơn hàng nếu thỏa mãn các điều kiện sau: - Đơn hàng có thông tin vận chuyển là **"Đơn hàng đang trên đường giao đến bạn"** trên Web/Ứng dụng Shopee. - Mã vận đơn và đơn vị vận chuyển của đơn giao đến TRÙNG KHỚP với mã vận đơn và đơn vị vận chuyển của đơn hàng trên Web/Ứng dụng Shopee bạn đã đặt - Thông tin trên đơn hàng trùng khớp với thông tin của bạn, bao gồm: họ tên, số điện thoại, địa chỉ nhận hàng, tên sản phẩm,…  |  - Thanh toán trước cho shipper khi chưa nhận được hàng - Thanh toán khi chưa kiểm tra kỹ thông tin đơn hàng  |  
+|  Hạn chế nhờ người nhận thay/nếu có nhận thay cũng sẽ phải lưu ý bước kiểm tra kỹ thông tin đơn hàng như đã nêu trên.    
+Nếu đơn hàng có nhãn **“Được Đồng Kiểm”** , cần đồng kiểm đơn hàng trước khi nhận để đảm bảo không có sơ suất nào xảy ra.  | Nhận hàng và thanh toán khi đang nghi ngờ tính xác thực của đơn hàng. Không tìm thấy mã đơn hàng, mã vận đơn trên mục**Tôi > Đang giao** trên Web/Ứng dụng Shopee  |  
+| Từ chối không nhận hàng nếu có nghi ngờ về tính xác thực của đơn hàng  | Có những hành vi không phù hợp để tránh các sự cố không đáng có/không mong muốn có thể xảy ra  |  
+| Ưu tiên chọn hình thức thanh toán trước (VÍ ShopeePay, Số dư TK Shopee, Thẻ tín dụng/ghi nợ/chuyển khoản ngân hàng) khi đặt đơn hàng  | Chia sẻ thông tin cá nhân, thông tin thanh toán, thông tin đơn hàng đã đặt cho bất kỳ ai (kể cả Người bán)  |  
+| Đối với đơn hàng là quà tặng từ Shopee: Kiểm tra và nhận quà từ chương trình mà bạn **Có tham gia** , Thông tin quà tặng từ các chương trình của Shopee sẽ được cập nhật trên Web/App hoặc Fanpage chính thức của Shopee. Không nhận quà không rõ chương trình hoặc có thu thêm phí  | Thỏa thuận riêng về đơn hàng với Người bán  |  
+  
+
+**2. Đơn hàng ảo/giả mạo Shopee là gì và tôi cần phải làm gì?**  
+| **Chiêu thức lừa đảo**  | **Hướng xử lý**  |  
+| --- | --- |  
+| **Đơn hàng từ Shop giao không đúng mô tả/giao sai hàng/giao hộp không**  | Sau khi đã nhận và kiểm tra hàng, bạn có thể gửi yêu cầu Trả hàng/Hoàn tiền và làm theo[** _hướng dẫn_**](https://help.shopee.vn/portal/article/79233?previousPage=other%20articles)  |  
+| **Không đặt hàng nhưng Shipper gọi nhận hàng và có thu phí**  | **_KHÔNG NHẬN_** đơn hàng này  |  
+| **Đơn hàng giả mạo đơn hàng bạn đã đặt trên Shopee**  |  Truy cập ứng dụng Shopee, vào mục **Tôi** > **Đơn mua** để xem thông tin đơn hàng (mã vận đơn, mã đơn hàng, trạng thái đơn,...) và đối chiếu với đơn hàng mà Shipper giao đến Nếu phát hiện bất thường, vui lòng **_KHÔNG NHẬN_** đơn hàng này và liên hệ[](https://help.shopee.vn/s/article/L%C3%A0m-th%E1%BA%BF-n%C3%A0o-%C4%91%E1%BB%83-li%C3%AAn-h%E1%BB%87-v%E1%BB%9Bi-b%E1%BB%99-ph%E1%BA%ADn-Ch%C4%83m-S%C3%B3c-Kh%C3%A1ch-H%C3%A0ng-c%E1%BB%A7a-Shopee-1542942387756?previousPage=other%20articles&previousPage=other%20articles&previousPage=other%20articles)[** _Nhân viên hỗ trợ Shopee_**](https://help.shopee.vn/s/article/L%C3%A0m-th%E1%BA%BF-n%C3%A0o-%C4%91%E1%BB%83-li%C3%AAn-h%E1%BB%87-v%E1%BB%9Bi-b%E1%BB%99-ph%E1%BA%ADn-Ch%C4%83m-S%C3%B3c-Kh%C3%A1ch-H%C3%A0ng-c%E1%BB%A7a-Shopee-1542942387756?previousPage=other%20articles&previousPage=other%20articles&previousPage=other%20articles)  |  
+| **Đơn hàng giả mạo quà tặng từ Shopee và có thu phí phát sinh**  |  **_KHÔNG NHẬN_** đơn hàng này Tất cả quà tặng từ Shopee đều được miễn phí vận chuyển, khách hàng nhận thưởng sẽ**không phải trả thêm bất kỳ khoản phí nào khác** [**_Tìm hiểu thêm_**](https://help.shopee.vn/portal/article/79554?previousPage=other%20articles)  |  
+  
+
+**Bài viết liên quan:**
+  1. [Các phương thức thanh toán cho đơn hàng Shopee](https://help.shopee.vn/vn/s/article/Shopee-h%E1%BB%97-tr%E1%BB%A3-nh%E1%BB%AFng-h%C3%ACnh-th%E1%BB%A9c-thanh-to%C3%A1n-n%C3%A0o-1542942315493?previousPage=other%20articles)
+  2. [Cảnh báo lừa đảo: Cung cấp dịch vụ có thu phí](https://help.shopee.vn/vn/s/article/C%E1%BA%A2NH-B%C3%81O-V%E1%BB%9AI-H%C3%8CNH-TH%E1%BB%A8C-L%E1%BB%AAA-%C4%90%E1%BA%A2O-CUNG-C%E1%BA%A4P-D%E1%BB%8ACH-V%E1%BB%A4-C%C3%93-THU-PH%C3%8D?previousPage=other%20articles)
+  3. [Cảnh báo lừa đảo: Thông báo trúng thưởng](https://help.shopee.vn/vn/s/article/C%E1%BA%A2NH-B%C3%81O-V%E1%BB%9AI-H%C3%8CNH-TH%E1%BB%A8C-L%E1%BB%AAA-%C4%90%E1%BA%A2O-TH%C3%94NG-B%C3%81O-TR%C3%9ANG-TH%C6%AF%E1%BB%9ENG?previousPage=other%20articles)
+
+
+Bạn có hài lòng với bài viết này?
+Hài lòng
+Không hài lòng
+Bài viết liên quan
+[[Cảnh báo lừa đảo] Cung cấp dịch vụ có thu phí](https://help.shopee.vn/portal/4/article/79553-%5BC%E1%BA%A3nh-b%C3%A1o-l%E1%BB%ABa-%C4%91%E1%BA%A3o%5D-Cung-c%E1%BA%A5p-d%E1%BB%8Bch-v%E1%BB%A5-c%C3%B3-thu-ph%C3%AD?previousPage=related%20articles)
+[[Cảnh báo lừa đảo] Tin nhắn/cuộc gọi lừa đảo](https://help.shopee.vn/portal/4/article/79477-%5BC%E1%BA%A3nh-b%C3%A1o-l%E1%BB%ABa-%C4%91%E1%BA%A3o%5D-Tin-nh%E1%BA%AFn%2Fcu%E1%BB%99c-g%E1%BB%8Di-l%E1%BB%ABa-%C4%91%E1%BA%A3o?previousPage=related%20articles)
+[[Cảnh báo lừa đảo] Tránh sập bẫy trước tin nhắn/bài đăng mạo danh Shopee tuyển dụng](https://help.shopee.vn/portal/4/article/79428-%5BC%E1%BA%A3nh-b%C3%A1o-l%E1%BB%ABa-%C4%91%E1%BA%A3o%5D-Tr%C3%A1nh-s%E1%BA%ADp-b%E1%BA%ABy-tr%C6%B0%E1%BB%9Bc-tin-nh%E1%BA%AFn%2Fb%C3%A0i-%C4%91%C4%83ng-m%E1%BA%A1o-danh-Shopee-tuy%E1%BB%83n-d%E1%BB%A5ng?previousPage=related%20articles)

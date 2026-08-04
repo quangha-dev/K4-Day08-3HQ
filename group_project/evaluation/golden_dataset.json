@@ -1,17 +1,77 @@
 [
   {
-    "question": "Người mua có thể yêu cầu trả hàng/hoàn tiền trong thời hạn bao lâu sau khi nhận hàng?",
-    "expected_answer": "Trong vòng 15 ngày kể từ khi giao hàng thành công (24 giờ đối với thực phẩm tươi sống/đông lạnh).",
-    "expected_context": "Trang Returns and Refunds Policy, mục Return/Refund Eligibility"
+    "question": "Shopee Việt Nam đang hỗ trợ những hình thức thanh toán nào cho người mua?",
+    "expected_answer": "Shopee hỗ trợ 10 hình thức thanh toán bao gồm: Ví ShopeePay, Thẻ Tín dụng/Ghi nợ, Trả góp bằng Thẻ tín dụng, Thanh toán QR, Ứng dụng ngân hàng, Thẻ nội địa NAPAS, Apple Pay, Google Pay, Thanh toán khi nhận hàng (COD), và SPayLater.",
+    "expected_context": "Trang Phương thức thanh toán trên Shopee (payment-methods-shopee.md)"
   },
   {
-    "question": "Shopee hỗ trợ những phương thức thanh toán nào?",
-    "expected_answer": "ShopeePay Wallet, thẻ tín dụng/ghi nợ, trả góp qua thẻ, QR Code, chuyển khoản qua app ngân hàng, thẻ NAPAS, Apple Pay, Google Pay, và COD.",
-    "expected_context": "Trang Payment Methods Overview"
+    "question": "Phương thức thanh toán bằng Thẻ Tín dụng hoặc Thẻ Ghi nợ áp dụng cho đơn hàng có giá trị tối thiểu là bao nhiêu?",
+    "expected_answer": "Chỉ áp dụng cho đơn hàng có giá trị thanh toán (bao gồm phí vận chuyển và chi phí phát sinh) từ 10.000 VNĐ trở lên.",
+    "expected_context": "Trang Phương thức thanh toán trên Shopee, mục Thẻ Tín dụng/Ghi nợ"
   },
   {
-    "question": "Người bán không được đăng bán những sản phẩm nào?",
-    "expected_answer": "Hàng giả/nhái, sản phẩm bất hợp pháp, vi phạm sở hữu trí tuệ, và các mặt hàng nằm trong danh sách cấm của sàn.",
-    "expected_context": "Trang Product Listing Regulations, mục Prohibited Content"
+    "question": "Hạn mức thanh toán cho đơn hàng trên Shopee qua phương thức Apple Pay nằm trong khoảng nào?",
+    "expected_answer": "Đơn hàng phải có giá trị thanh toán cuối cùng từ 10.000 VNĐ đến 25.000.000 VNĐ.",
+    "expected_context": "Trang Phương thức thanh toán trên Shopee, mục Apple Pay"
+  },
+  {
+    "question": "Hạn mức giá trị đơn hàng tối đa đối với phương thức thanh toán Google Pay trên Shopee là bao nhiêu?",
+    "expected_answer": "Đơn hàng phải có giá trị thanh toán từ 10.000 VNĐ đến 120.000.000 VNĐ.",
+    "expected_context": "Trang Phương thức thanh toán trên Shopee, mục Google Pay"
+  },
+  {
+    "question": "Phương thức SPayLater hỗ trợ các loại kỳ hạn thanh toán trả sau nào?",
+    "expected_answer": "SPalLater cho phép trả sau theo các kỳ hạn 01, 02, 03 và 06 kỳ (kỳ hạn 06 kỳ áp dụng cho nhóm người dùng nhất định).",
+    "expected_context": "Trang Phương thức thanh toán trên Shopee, mục SPayLater"
+  },
+  {
+    "question": "Chính sách Trả hàng và Hoàn tiền Shopee áp dụng đối với những đối tượng nào?",
+    "expected_answer": "Áp dụng đối với Người Mua, Người Bán, các đơn vị cung cấp dịch vụ vận chuyển, nhân viên giao nhận (shipper) và các bên liên quan.",
+    "expected_context": "Trang Chính sách trả hàng và hoàn tiền Shopee, mục 1.1 Đối Tượng Áp Dụng"
+  },
+  {
+    "question": "Người mua chỉ có thể gửi yêu cầu trả hàng/hoàn tiền trong những trường hợp nào?",
+    "expected_answer": "Khi người mua đã thanh toán nhưng không nhận được sản phẩm, hoặc nhận được sản phẩm không đúng/bị hư hỏng/thiếu hàng.",
+    "expected_context": "Trang Chính sách trả hàng và hoàn tiền Shopee, mục 3.1 Điều Kiện Yêu Cầu Trả Hàng/Hoàn Tiền"
+  },
+  {
+    "question": "Yêu cầu hoàn tiền khi gặp sự cố giao dịch Ví ShopeePay tại cửa hàng sẽ được xử lý trong bao lâu?",
+    "expected_answer": "Yêu cầu sẽ được tiếp nhận và xử lý trong vòng 72 giờ làm việc.",
+    "expected_context": "Trang Tin tức article_02.md ([ShopeePay] Hoàn tiền tại cửa hàng)"
+  },
+  {
+    "question": "Khi phát hiện giao dịch lạ phát sinh từ Shopee trên thẻ ngân hàng, người mua cần kiểm tra mục nào đầu tiên?",
+    "expected_answer": "Truy cập ngay vào tài khoản Shopee và kiểm tra lịch sử mua hàng của bạn.",
+    "expected_context": "Trang Tin tức article_03.md ([Bảo mật tài khoản] Giao dịch lạ)"
+  },
+  {
+    "question": "Nếu tài khoản Shopee có dấu hiệu bị lạm dụng hoặc truy cập trái phép, người dùng cần làm gì ngay lập tức?",
+    "expected_answer": "Cần lập tức thay đổi Mật khẩu tài khoản Shopee, Mật khẩu ví ShopeePay và liên hệ ngay với Bộ phận CSKH Shopee.",
+    "expected_context": "Trang Tin tức article_03.md ([Bảo mật tài khoản] Giao dịch lạ)"
+  },
+  {
+    "question": "Shopee Việt Nam chỉ hỗ trợ đặt và giao hàng cho những người mua có địa chỉ ở đâu?",
+    "expected_answer": "Shopee Việt Nam chỉ hỗ trợ đặt và giao hàng cho những người mua có địa chỉ tại Việt Nam.",
+    "expected_context": "Trang Tin tức article_01.md ([Thành viên mới] Mua hàng / đặt hàng)"
+  },
+  {
+    "question": "Người mua có mấy cách chính để tiến hành đặt hàng trên ứng dụng Shopee sau khi chọn được sản phẩm?",
+    "expected_answer": "Có 2 cách: Mua và thanh toán ngay, hoặc Thêm sản phẩm vào Giỏ hàng trước khi thanh toán.",
+    "expected_context": "Trang Tin tức article_01.md ([Thành viên mới] Mua hàng / đặt hàng)"
+  },
+  {
+    "question": "Thời tiết hôm nay ở Hà Nội như thế nào và chiều nay có mưa không?",
+    "expected_answer": "Tôi không thể xác minh thông tin này từ nguồn hiện có.",
+    "expected_context": "N/A (Out of Scope - Non-ecommerce query)"
+  },
+  {
+    "question": "Hướng dẫn cách nấu món Phở bò gia truyền Hà Nội gồm những nguyên liệu gì?",
+    "expected_answer": "Tôi không thể xác minh thông tin này từ nguồn hiện có.",
+    "expected_context": "N/A (Out of Scope - Culinary query)"
+  },
+  {
+    "question": "Làm thế nào để đăng ký tài khoản làm tài xế giao hàng trên ứng dụng Grab?",
+    "expected_answer": "Tôi không thể xác minh thông tin này từ nguồn hiện có.",
+    "expected_context": "N/A (Out of Scope - Competitor platform query)"
   }
 ]
