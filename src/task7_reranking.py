@@ -74,7 +74,9 @@ def rerank_rrf(
 
             if key not in raw_scores_map:
                 raw_scores_map[key] = {}
-            score_type = item.get("score_type", f"ranker_{list_idx}")
+            score_type = item.get("score_type") or f"ranker_{list_idx}"
+            if score_type in raw_scores_map[key]:
+                score_type = f"{score_type}_{list_idx}"
             raw_scores_map[key][score_type] = item.get("score", 0.0)
 
             if key not in candidates:
@@ -127,9 +129,9 @@ def rerank(
             # True multi-list fusion
             return rerank_rrf(candidates, top_k)
         else:
-            # Single list fusion fallback
-            ranked = sorted(candidates, key=lambda c: c.get("score", 0.0), reverse=True)
-            return rerank_rrf([ranked], top_k)
+            # Return top-k directly if only 1 list provided
+            return sorted(candidates, key=lambda c: c.get("score", 0.0), reverse=True)[:top_k]
+
 
     else:
         raise ValueError(f"Unknown rerank method: {method}")

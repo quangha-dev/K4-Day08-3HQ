@@ -116,10 +116,14 @@ def pageindex_search(query: str, top_k: int = 5) -> list[dict]:
             'source': 'pageindex'   # Đánh dấu nguồn retrieval
         }
     """
-    document_ids = _configured_document_ids()
-    if top_k <= 0 or not PAGEINDEX_API_KEY or not document_ids:
+    if top_k <= 0 or not query or not query.strip() or not PAGEINDEX_API_KEY:
         return []
 
+    document_ids = _configured_document_ids()
+    if not document_ids:
+        return []
+
+    cached_map = {v: k for k, v in _cached_document_ids().items()}
     client = PageIndexClient(api_key=PAGEINDEX_API_KEY)
     all_results = []
     for document_id in document_ids:
@@ -129,14 +133,24 @@ def pageindex_search(query: str, top_k: int = 5) -> list[dict]:
             deadline = time.monotonic() + 60
             while time.monotonic() < deadline:
                 retrieval = client.get_retrieval(retrieval_id)
-                status = retrieval.get("status", "").lower()
-                if status == "completed" or (status not in ("failed", "cancelled", "error") and "retrieved_nodes" in retrieval):
+                status = str(retrieval.get("status", "")).lower()
+                
+                # Strict completed check: do not return partial results while processing
+                if status in ("completed", "succeeded"):
                     results = _extract_results(retrieval, top_k, document_id)
-                    if results:
-                        all_results.extend(results)
+                    for r in results:
+                        r["metadata"]["source_file"] = cached_map.get(document_id, document_id)
+                    all_results.extend(results)
                     break
-                if status in ("failed", "cancelled", "error"):
+                elif status in ("failed", "cancelled", "error"):
                     break
+                
+                # If SDK returns completed results directly without status field
+                if not status and "retrieved_nodes" in retrieval:
+                    results = _extract_results(retrieval, top_k, document_id)
+                    all_results.extend(results)
+                    break
+                    
                 time.sleep(2)
         except Exception as e:
             print(f"⚠ PageIndex error for doc {document_id}: {e}")
@@ -146,6 +160,7 @@ def pageindex_search(query: str, top_k: int = 5) -> list[dict]:
 
 
 if __name__ == "__main__":
+
     if not PAGEINDEX_API_KEY:
         print("⚠ Hãy set PAGEINDEX_API_KEY trong file .env")
         print("  Đăng ký tại: https://pageindex.ai/")

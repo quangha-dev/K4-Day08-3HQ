@@ -112,9 +112,13 @@ def lexical_search(query: str, top_k: int = 10) -> list[dict]:
             "metadata": dict(doc.get("metadata", {})),
         }
         for doc, score in zip(corpus, scores)
-        if score > 0
     ]
+    # Filter candidates with no query term overlap if max_score > 0
+    max_score = max((r["score"] for r in results), default=0.0)
+    if max_score > 0:
+        results = [r for r in results if r["score"] > 0]
     return sorted(results, key=lambda result: result["score"], reverse=True)[:top_k]
+
 
 
 if __name__ == "__main__":
