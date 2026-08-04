@@ -22,35 +22,71 @@ có field "deprecation" cảnh báo) và trả kết quả trong "retrieved_node
 (json.dumps(...)) trước khi viết logic parse, đừng đoán schema từ ví dụ code cũ.
 """
 
+import json
 import os
+import time
 from pathlib import Path
 from dotenv import load_dotenv
+from pageindex import PageIndexClient
 
 load_dotenv()
 
 PAGEINDEX_API_KEY = os.getenv("PAGEINDEX_API_KEY", "")
-STANDARDIZED_DIR = Path(__file__).parent.parent / "data" / "standardized"
+LANDING_DIR = Path(__file__).parent.parent / "data" / "landing"
+DOCUMENT_IDS_PATH = Path(__file__).parent.parent / "pageindex_doc_ids.json"
+PAGEINDEX_DOCUMENT_IDS = tuple(
+    doc_id.strip() for doc_id in os.getenv("PAGEINDEX_DOCUMENT_IDS", "").split(",") if doc_id.strip()
+)
+
+
+def _cached_document_ids() -> dict[str, str]:
+    if not DOCUMENT_IDS_PATH.exists():
+        return {}
+    return json.loads(DOCUMENT_IDS_PATH.read_text(encoding="utf-8"))
+
+
+def _configured_document_ids() -> tuple[str, ...]:
+    if PAGEINDEX_DOCUMENT_IDS:
+        return PAGEINDEX_DOCUMENT_IDS
+    return tuple(_cached_document_ids().values())
+
+
+def _extract_results(retrieval: dict, top_k: int, document_id: str) -> list[dict]:
+    results = []
+    for node in retrieval.get("retrieved_nodes", []):
+        for group in node.get("relevant_contents", []):
+            for item in group:
+                content = item.get("relevant_content", "").strip()
+                if content:
+                    results.append(
+                        {
+                            "content": content,
+                            "score": 1.0 / (len(results) + 1),
+                            "metadata": {"document_id": document_id, "section": item.get("section_title", "")},
+                            "source": "pageindex",
+                        }
+                    )
+                    if len(results) == top_k:
+                        return results
+    return results
 
 
 def upload_documents():
     """
-    Upload toàn bộ markdown documents lên PageIndex.
+    Upload landing PDF documents lên PageIndex và cache document IDs.
     """
-    # TODO: Implement upload
-    #
-    # Tham khảo: https://github.com/VectifyAI/PageIndex
-    #
-    # from pageindex.client import PageIndexClient
-    #
-    # client = PageIndexClient(api_key=PAGEINDEX_API_KEY)
-    #
-    # for md_file in STANDARDIZED_DIR.rglob("*.md"):
-    #     # Lưu ý: PageIndex nhận PDF, không nhận .md trực tiếp — có thể cần
-    #     # convert markdown sang PDF đơn giản bằng fpdf2 trước khi upload.
-    #     resp = client.submit_document(str(pdf_path))
-    #     doc_id = resp.get("doc_id") or resp.get("id")
-    #     print(f"  ✓ Uploaded: {md_file.name} -> {doc_id}")
-    raise NotImplementedError("Implement upload_documents")
+    if not PAGEINDEX_API_KEY:
+        raise RuntimeError("Set PAGEINDEX_API_KEY before uploading documents")
+
+    document_ids = _cached_document_ids()
+    client = PageIndexClient(api_key=PAGEINDEX_API_KEY)
+    for pdf_path in LANDING_DIR.rglob("*.pdf"):
+        key = str(pdf_path.relative_to(LANDING_DIR))
+        if key not in document_ids:
+            response = client.submit_document(str(pdf_path))
+            document_ids[key] = response.get("doc_id") or response["id"]
+    DOCUMENT_IDS_PATH.write_text(json.dumps(document_ids, indent=2), encoding="utf-8")
+    return document_ids
 
 
 def pageindex_search(query: str, top_k: int = 5) -> list[dict]:
@@ -70,30 +106,24 @@ def pageindex_search(query: str, top_k: int = 5) -> list[dict]:
             'source': 'pageindex'   # Đánh dấu nguồn retrieval
         }
     """
-    # TODO: Implement PageIndex query
-    #
-    # from pageindex.client import PageIndexClient
-    #
-    # client = PageIndexClient(api_key=PAGEINDEX_API_KEY)
-    # resp = client.submit_query(doc_id=doc_id, query=query)
-    # retrieval_id = resp.get("retrieval_id") or resp.get("id")
-    #
-    # # Poll cho đến khi status == "completed"
-    # retrieval = client.get_retrieval(retrieval_id)
-    #
-    # # Parse retrieval["retrieved_nodes"] — mỗi node có "relevant_contents"
-    # results = []
-    # for node in retrieval.get("retrieved_nodes", [])[:2]:
-    #     for group in node.get("relevant_contents", []):
-    #         for item in group:
-    #             results.append({
-    #                 "content": item.get("relevant_content", ""),
-    #                 "score": ...,  # PageIndex không trả score trực tiếp — tự gán theo rank
-    #                 "metadata": {"section": item.get("section_title")},
-    #                 "source": "pageindex",
-    #             })
-    # return results[:top_k]
-    raise NotImplementedError("Implement pageindex_search")
+    document_ids = _configured_document_ids()
+    if top_k <= 0 or not PAGEINDEX_API_KEY or not document_ids:
+        return []
+
+    client = PageIndexClient(api_key=PAGEINDEX_API_KEY)
+    for document_id in document_ids:
+        response = client.submit_query(document_id, query)
+        retrieval_id = response.get("retrieval_id") or response["id"]
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            retrieval = client.get_retrieval(retrieval_id)
+            results = _extract_results(retrieval, top_k, document_id)
+            if results:
+                return results
+            if retrieval.get("status") == "failed":
+                break
+            time.sleep(2)
+    return []
 
 
 if __name__ == "__main__":
