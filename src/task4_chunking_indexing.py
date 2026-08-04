@@ -159,14 +159,19 @@ def chunk_documents(documents: list[dict]) -> list[dict]:
     chunks = []
     for document in documents:
         document_chunks = 0
+        base_metadata = document.get("metadata", {})
+        # Dùng chung hệ quy chiếu id với Task 6 (`<relative path>#chunk-<n>`)
+        # để trích dẫn và đối chiếu giữa hai ranker được nhất quán.
+        document_key = base_metadata.get("source_path") or base_metadata.get("source", "unknown")
         for section_text, heading_metadata in _split_by_headings(document["content"]):
             for part in _split_long_section(section_text):
                 chunks.append({
                     "content": part,
                     "metadata": {
-                        **document.get("metadata", {}),
+                        **base_metadata,
                         **heading_metadata,
                         "chunk_index": document_chunks,
+                        "chunk_id": f"{document_key}#chunk-{document_chunks}",
                     },
                 })
                 document_chunks += 1

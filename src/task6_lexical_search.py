@@ -24,6 +24,73 @@ def _tokenize(text: str) -> list[str]:
     return re.findall(r"\w+", text.lower(), flags=re.UNICODE)
 
 
+# Corpus là tiếng Việt 100%, nhưng người dùng (và bộ câu hỏi đánh giá) hay gõ
+# tiếng Anh. BM25 khớp từ theo mặt chữ nên "order tracking" không bao giờ chạm
+# được "theo dõi đơn hàng" — recall tụt về 0 dù tài liệu có đúng nội dung.
+# Bảng ánh xạ này mở rộng truy vấn sang thuật ngữ tiếng Việt tương đương
+# (cross-lingual query expansion). Chỉ mở rộng phía QUERY, không đụng corpus,
+# nên điểm BM25 của tài liệu vẫn giữ nguyên ý nghĩa.
+_QUERY_ALIASES: dict[str, tuple[str, ...]] = {
+    "order": ("đơn", "hàng"),
+    "orders": ("đơn", "hàng"),
+    "track": ("theo", "dõi"),
+    "tracking": ("theo", "dõi", "vận", "chuyển"),
+    "guide": ("hướng", "dẫn"),
+    "guides": ("hướng", "dẫn"),
+    "instruction": ("hướng", "dẫn"),
+    "refund": ("hoàn", "tiền"),
+    "refunds": ("hoàn", "tiền"),
+    "return": ("trả", "hàng"),
+    "returns": ("trả", "hàng"),
+    "payment": ("thanh", "toán"),
+    "payments": ("thanh", "toán"),
+    "method": ("phương", "thức"),
+    "methods": ("phương", "thức"),
+    "seller": ("người", "bán"),
+    "sellers": ("người", "bán"),
+    "buyer": ("người", "mua"),
+    "buyers": ("người", "mua"),
+    "listing": ("đăng", "bán"),
+    "regulation": ("quy", "định"),
+    "regulations": ("quy", "định"),
+    "policy": ("chính", "sách"),
+    "policies": ("chính", "sách"),
+    "privacy": ("bảo", "mật", "riêng", "tư"),
+    "security": ("bảo", "mật"),
+    "evidence": ("bằng", "chứng"),
+    "proof": ("bằng", "chứng"),
+    "shipping": ("vận", "chuyển"),
+    "delivery": ("giao", "hàng"),
+    "fee": ("phí",),
+    "fees": ("phí",),
+    "cost": ("chi", "phí"),
+    "account": ("tài", "khoản"),
+    "product": ("sản", "phẩm"),
+    "products": ("sản", "phẩm"),
+    "voucher": ("mã", "giảm", "giá"),
+    "complaint": ("khiếu", "nại"),
+    "dispute": ("tranh", "chấp"),
+    "deadline": ("thời", "hạn"),
+    "condition": ("điều", "kiện"),
+    "conditions": ("điều", "kiện"),
+    "support": ("hỗ", "trợ"),
+    "fraud": ("lừa", "đảo"),
+    "scam": ("lừa", "đảo"),
+}
+
+
+def _expand_query_tokens(tokens: list[str]) -> list[str]:
+    """Bổ sung biến thể tiếng Việt cho token truy vấn, giữ nguyên thứ tự gốc."""
+    expanded = list(tokens)
+    seen = set(tokens)
+    for token in tokens:
+        for alias in _QUERY_ALIASES.get(token, ()):
+            if alias not in seen:
+                seen.add(alias)
+                expanded.append(alias)
+    return expanded
+
+
 def _source_signature() -> tuple:
     return tuple(
         (file.relative_to(STANDARDIZED_DIR).as_posix(), file.stat().st_mtime_ns, file.stat().st_size)
@@ -190,7 +257,7 @@ def lexical_search(query: str, top_k: int = 10) -> list[dict]:
     """Return lexical-overlap matches, ranked by their raw BM25 score."""
     if not isinstance(query, str) or not isinstance(top_k, int) or isinstance(top_k, bool) or top_k <= 0:
         return []
-    tokens = _tokenize(query)
+    tokens = _expand_query_tokens(_tokenize(query))
     corpus, signature = _active_corpus()
     if not tokens or not corpus:
         return []
