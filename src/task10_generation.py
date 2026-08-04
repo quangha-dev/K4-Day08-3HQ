@@ -18,7 +18,17 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from .task9_retrieval_pipeline import retrieve
+from .task9_retrieval_pipeline import retrieve, retrieve_with_diagnostics
+
+# Câu trả lời chuẩn khi không đủ bằng chứng (yêu cầu bắt buộc của đề bài).
+NO_EVIDENCE_ANSWER = (
+    "I cannot verify this information — tôi không tìm thấy nội dung nào trong "
+    "bộ tài liệu chính sách hiện có để trả lời câu hỏi này."
+)
+
+# Số lượt hội thoại gần nhất được đưa lại vào prompt. Giữ nhỏ để tránh
+# đẩy context dài làm loãng phần tài liệu vừa retrieve được.
+MAX_HISTORY_TURNS = 6
 
 
 # =============================================================================
@@ -37,8 +47,25 @@ TOP_P = 0.9
 # Chọn 0.3 vì: RAG cần factual, ít sáng tạo
 TEMPERATURE = 0.3
 
-# TODO: Chọn LLM model (OpenRouter model ID)
-LLM_MODEL = "openai/gpt-4o-mini"  # hoặc model ":free" nếu chưa có credit
+# LLM model (OpenRouter model ID). Đổi qua .env mà không phải sửa code.
+# Mặc định dùng model ":free" để không phụ thuộc credit — `openai/gpt-4o-mini`
+# cần tài khoản có số dư, hết credit sẽ trả 401/402 và làm gãy cả pipeline.
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+OPENAI_BASE_URL = "https://api.openai.com/v1"
+
+# Model id ghi theo kiểu OpenRouter; hàm _normalize_model_id() sẽ tự bỏ tiền tố
+# "openai/" khi gọi thẳng API OpenAI.
+LLM_MODEL = os.getenv("LLM_MODEL", "openai/gpt-4o-mini")
+
+# Thử lần lượt khi model chính không dùng được (hết quota, model bị gỡ...).
+LLM_FALLBACK_MODELS = [
+    model.strip()
+    for model in os.getenv(
+        "LLM_FALLBACK_MODELS",
+        "tencent/hy3:free,nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+    ).split(",")
+    if model.strip()
+]
 
 
 # =============================================================================
@@ -179,7 +206,96 @@ def format_context(chunks: list[dict]) -> str:
 # GENERATION
 # =============================================================================
 
-def generate_with_citation(query: str, top_k: int = TOP_K) -> dict:
+def _resolve_llm_provider() -> tuple[str, str, bool]:
+    """Chọn endpoint khớp với LOẠI key đang có.
+
+    Key OpenRouter bắt đầu bằng ``sk-or-``; key OpenAI bắt đầu bằng ``sk-``
+    (hoặc ``sk-proj-``). Gửi key OpenAI tới endpoint OpenRouter sẽ bị trả 401 —
+    lỗi này rất hay gặp vì cả hai đều dùng chung OpenAI SDK nên trông giống nhau.
+
+    Returns:
+        (api_key, base_url, needs_vendor_prefix)
+        ``needs_vendor_prefix`` = True khi model id phải có dạng ``openai/gpt-4o-mini``
+        (OpenRouter), False khi phải là ``gpt-4o-mini`` (OpenAI trực tiếp).
+    """
+    openrouter_key = (os.getenv("OPENROUTER_API_KEY") or "").strip()
+    openai_key = (os.getenv("OPENAI_API_KEY") or "").strip()
+
+    # Key nằm nhầm biến môi trường vẫn phải dùng được.
+    if openrouter_key.startswith("sk-or-"):
+        return openrouter_key, os.getenv("OPENROUTER_BASE_URL", OPENROUTER_BASE_URL), True
+    if openai_key.startswith("sk-or-"):
+        return openai_key, os.getenv("OPENROUTER_BASE_URL", OPENROUTER_BASE_URL), True
+    if openai_key:
+        return openai_key, os.getenv("OPENAI_BASE_URL", OPENAI_BASE_URL), False
+    if openrouter_key:
+        # Không phải định dạng OpenRouter → nhiều khả năng là key OpenAI đặt nhầm chỗ.
+        return openrouter_key, os.getenv("OPENAI_BASE_URL", OPENAI_BASE_URL), False
+
+    raise RuntimeError(
+        "Chưa có API key. Điền OPENAI_API_KEY (sk-proj-...) hoặc "
+        "OPENROUTER_API_KEY (sk-or-v1-...) vào file .env"
+    )
+
+
+def _normalize_model_id(model: str, needs_vendor_prefix: bool) -> str:
+    """Chuẩn hoá model id theo endpoint đang dùng."""
+    if needs_vendor_prefix:
+        return model if "/" in model else f"openai/{model}"
+    return model.split("/", 1)[1] if model.startswith("openai/") else model
+
+
+def _extractive_answer(chunks: list[dict], error: Exception | None = None) -> str:
+    """Câu trả lời chế độ suy giảm khi không gọi được LLM.
+
+    Không sinh chữ mới — chỉ trích nguyên văn các đoạn đã truy hồi kèm nguồn.
+    Nhờ vậy vẫn kiểm chứng được và không có nguy cơ bịa đặt, đúng tinh thần
+    "chỉ trả lời khi có nguồn để kiểm chứng".
+    """
+    if not chunks:
+        return NO_EVIDENCE_ANSWER
+
+    lines = [
+        "⚠️ Không gọi được mô hình sinh câu trả lời. "
+        "Dưới đây là các đoạn tài liệu liên quan nhất, trích nguyên văn:",
+        "",
+    ]
+    for i, chunk in enumerate(chunks[:3], 1):
+        metadata = chunk.get("metadata", {}) or {}
+        source = metadata.get("source") or metadata.get("title") or f"Tài liệu {i}"
+        section = metadata.get("section") or metadata.get("subsection") or ""
+        excerpt = " ".join(str(chunk.get("content", "")).split())[:400]
+        label = f"{source}{' — ' + section if section else ''}"
+        lines.append(f"{i}. {excerpt} [{label}]")
+        lines.append("")
+
+    if error is not None:
+        lines.append(f"_Chi tiết lỗi: {type(error).__name__}: {str(error)[:180]}_")
+    return "\n".join(lines).strip()
+
+
+def _build_history_messages(history: list[dict] | None) -> list[dict]:
+    """Chuyển lịch sử chat thành messages cho LLM (bỏ metadata thừa).
+
+    Đây là thứ biến chatbot từ hỏi-đáp một lượt thành hội thoại thật:
+    câu "còn hàng đông lạnh thì sao?" chỉ hiểu được khi LLM thấy lượt trước.
+    """
+    if not history:
+        return []
+    messages = []
+    for turn in history[-MAX_HISTORY_TURNS:]:
+        role = turn.get("role")
+        content = (turn.get("content") or "").strip()
+        if role in ("user", "assistant") and content:
+            messages.append({"role": role, "content": content})
+    return messages
+
+
+def generate_with_citation(
+    query: str,
+    top_k: int = TOP_K,
+    history: list[dict] | None = None,
+) -> dict:
     """
     End-to-end RAG generation có citation.
 
@@ -201,8 +317,22 @@ def generate_with_citation(query: str, top_k: int = TOP_K) -> dict:
             'retrieval_source': str  # 'hybrid' hoặc 'pageindex'
         }
     """
-    # Step 1: Retrieve
-    chunks = retrieve(query, top_k=top_k)
+    # Step 1: Retrieve (kèm số liệu chẩn đoán để UI hiển thị)
+    diagnostics = retrieve_with_diagnostics(query, top_k=top_k)
+    chunks = diagnostics["results"]
+
+    # Không có evidence → không gọi LLM. Gọi LLM với context rỗng chỉ tạo cơ hội
+    # cho model bịa ra chính sách không tồn tại.
+    if not chunks:
+        return {
+            "answer": NO_EVIDENCE_ANSWER,
+            "sources": [],
+            "retrieval_source": "none",
+            "retrieval_mode": "none",
+            "dense_top_score": diagnostics["dense_top_score"],
+            "threshold": diagnostics["threshold"],
+            "fallback_triggered": diagnostics["fallback_triggered"],
+        }
 
     # Step 2: Reorder
     reordered = reorder_for_llm(chunks)
@@ -238,33 +368,51 @@ def generate_with_citation(query: str, top_k: int = TOP_K) -> dict:
 
     # Step 5: Call LLM (OpenRouter / OpenAI API)
     from openai import OpenAI
-    api_key = os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENAI_API_KEY")
-    base_url = os.getenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1")
+
+    api_key, base_url, model_prefix = _resolve_llm_provider()
     client = OpenAI(api_key=api_key, base_url=base_url)
 
-    response = client.chat.completions.create(
-        model=LLM_MODEL,
-        messages=[
-            {
-                "role": "system",
-                "content": SYSTEM_PROMPT
-            },
-            {
-                "role": "user",
-                "content": user_message
-            }
-        ],
-        temperature=TEMPERATURE,
-        top_p=TOP_P,
-    )
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    messages.extend(_build_history_messages(history))
+    messages.append({"role": "user", "content": user_message})
 
-    answer = response.choices[0].message.content
+    answer = ""
+    degraded = False
+    last_error: Exception | None = None
+
+    candidate_models = [LLM_MODEL] if not model_prefix else [LLM_MODEL, *LLM_FALLBACK_MODELS]
+    for raw_model in candidate_models:
+        try:
+            response = client.chat.completions.create(
+                model=_normalize_model_id(raw_model, model_prefix),
+                messages=messages,
+                temperature=TEMPERATURE,
+                top_p=TOP_P,
+            )
+            answer = (response.choices[0].message.content or "").strip()
+            if answer:
+                break
+        except Exception as exc:  # hết quota, 401/402/429, model bị gỡ...
+            last_error = exc
+            continue
+
+    # Không model nào trả lời được → chế độ suy giảm: trình bày thẳng evidence
+    # đã truy hồi kèm trích dẫn, thay vì để cả chatbot gãy giữa buổi demo.
+    if not answer:
+        degraded = True
+        answer = _extractive_answer(reordered, last_error)
 
     # Step 6: Return
+    mode = reordered[0].get("retrieval_source") or reordered[0].get("source", "hybrid")
     return {
         "answer": answer,
         "sources": reordered,
-        "retrieval_source": reordered[0].get("source", "hybrid") if reordered else "none"
+        "retrieval_source": mode,
+        "retrieval_mode": mode,
+        "dense_top_score": diagnostics["dense_top_score"],
+        "threshold": diagnostics["threshold"],
+        "fallback_triggered": diagnostics["fallback_triggered"],
+        "degraded": degraded,
     }
 
 
