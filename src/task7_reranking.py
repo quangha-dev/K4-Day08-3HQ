@@ -1,5 +1,6 @@
 """Task 7 — Reciprocal Rank Fusion only."""
 
+import hashlib
 import json
 
 
@@ -7,12 +8,20 @@ def _candidate_identity(item: dict, list_index: int, rank: int) -> str:
     metadata = item.get("metadata") or {}
     if metadata.get("chunk_id"):
         return f"chunk:{metadata['chunk_id']}"
-    content = str(item.get("content") or "").strip()
+    source_keys = ("document_id", "source_file", "source", "relative_path")
+    passage_keys = ("offset", "start", "end", "chunk_index", "node_id")
+    location_keys = ("page", "page_number", "page_label", "section", "section_title", "title")
+    source = {key: metadata[key] for key in source_keys if metadata.get(key) not in (None, "")}
+    passage = {key: metadata[key] for key in passage_keys if metadata.get(key) not in (None, "")}
+    location = {key: metadata[key] for key in location_keys if metadata.get(key) not in (None, "")}
+    content = " ".join(str(item.get("content") or "").split())
+    if source and passage:
+        return f"passage:{json.dumps([source, passage], sort_keys=True, default=str)}"
+    if source and content:
+        digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
+        return f"content:{json.dumps([source, location, digest], sort_keys=True)}"
     if content:
-        return f"content:{content}"
-    stable_metadata = {key: value for key, value in metadata.items() if value not in (None, "")}
-    if stable_metadata:
-        return f"metadata:{json.dumps(stable_metadata, sort_keys=True, default=str)}"
+        return f"content:{hashlib.sha256(content.encode('utf-8')).hexdigest()}"
     return f"position:{list_index}:{rank}"
 
 
@@ -24,6 +33,15 @@ def _source_name(item: dict, list_index: int, existing: dict) -> str:
         name = f"{base}_{suffix}"
         suffix += 1
     return name
+
+
+def _default_score_type(item: dict, list_index: int) -> str:
+    source = str(item.get("retrieval_source") or item.get("source") or "").lower()
+    if source == "dense":
+        return "cosine"
+    if source == "sparse":
+        return "bm25"
+    return f"ranker_{list_index}"
 
 
 def rerank_rrf(ranked_lists: list[list[dict]], top_k: int = 5, k: int = 60) -> list[dict]:
@@ -50,7 +68,7 @@ def rerank_rrf(ranked_lists: list[list[dict]], top_k: int = 5, k: int = 60) -> l
             provenance = raw_scores.setdefault(key, {})
             provenance[_source_name(item, list_index, provenance)] = {
                 "score": item.get("score", 0.0),
-                "score_type": item.get("score_type", f"ranker_{list_index}"),
+                "score_type": item.get("score_type") or _default_score_type(item, list_index),
             }
 
     results = []
@@ -73,4 +91,4 @@ def rerank(query: str, candidates: list[dict] | list[list[dict]], top_k: int = 5
         raise ValueError("Only RRF reranking is implemented; use method='rrf'.")
     if candidates and isinstance(candidates[0], list):
         return rerank_rrf(candidates, top_k)
-    return sorted(candidates, key=lambda item: item.get("score", 0.0), reverse=True)[:top_k]
+    return list(candidates)[:top_k]
