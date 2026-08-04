@@ -16,6 +16,7 @@ data/_tmp_pdf/
 *.tmp
 pageindex_doc_ids.json
 pageindex_pdfs/
+tests/test_tasks_6_7_8_regression_local.py
 
 # IDE
 .vscode/
