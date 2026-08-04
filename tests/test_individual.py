@@ -10,6 +10,7 @@ Mỗi task được test riêng. Tổng: 50 điểm.
 
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -372,6 +373,38 @@ class TestTask6(unittest.TestCase):
 
         self.assertEqual(results[0]["metadata"]["source"], "policy")
         self.assertGreater(results[0]["score"], 0)
+
+    def test_bm25_returns_no_results_when_no_terms_match(self):
+        """Query không có keyword không được trả document score 0."""
+        from src import task6_lexical_search
+
+        corpus = [
+            {"content": "Return and refund policy", "metadata": {}},
+            {"content": "Payment methods", "metadata": {}},
+            {"content": "Seller listing regulations", "metadata": {}},
+        ]
+        with patch.object(task6_lexical_search, "CORPUS", corpus):
+            self.assertEqual(task6_lexical_search.lexical_search("zzzz-no-match"), [])
+
+    def test_empty_corpus_is_reloaded_after_markdown_is_added(self):
+        """A process started before Task 3 can search documents added later."""
+        from src import task6_lexical_search
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            corpus_dir = Path(temp_dir)
+            with (
+                patch.object(task6_lexical_search, "CORPUS", []),
+                patch.object(task6_lexical_search, "STANDARDIZED_DIR", corpus_dir),
+                patch.object(task6_lexical_search, "_CACHED_CORPUS", None),
+                patch.object(task6_lexical_search, "_CACHED_BM25", None),
+            ):
+                self.assertEqual(task6_lexical_search.lexical_search("refund"), [])
+                for index, text in enumerate(("Refund policy", "Payment methods", "Listing rules")):
+                    (corpus_dir / f"doc-{index}.md").write_text(text, encoding="utf-8")
+
+                results = task6_lexical_search.lexical_search("refund")
+
+        self.assertEqual(results[0]["content"], "Refund policy")
 
 
 # ===========================================================================

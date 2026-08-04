@@ -32,7 +32,7 @@ def _tokenize(text: str) -> list[str]:
 
 def _load_corpus() -> list[dict]:
     global _CACHED_CORPUS
-    if _CACHED_CORPUS is not None:
+    if _CACHED_CORPUS:
         return _CACHED_CORPUS
 
     corpus = []
@@ -113,10 +113,7 @@ def lexical_search(query: str, top_k: int = 10) -> list[dict]:
         }
         for doc, score in zip(corpus, scores)
     ]
-    # Filter candidates with no query term overlap if max_score > 0
-    max_score = max((r["score"] for r in results), default=0.0)
-    if max_score > 0:
-        results = [r for r in results if r["score"] > 0]
+    results = [r for r in results if r["score"] > 0]
     return sorted(results, key=lambda result: result["score"], reverse=True)[:top_k]
 
 
