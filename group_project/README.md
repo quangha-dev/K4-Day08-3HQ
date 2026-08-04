@@ -79,11 +79,11 @@ Xem code mẫu (DeepEval/RAGAS/TruLens) chi tiết trong `README.md` gốc mục
 
 | Thành viên | MSSV | Nhiệm vụ | Trạng thái |
 |-----------|------|----------|------------|
-| | | | |
-| | | | |
-| | | | |
-| | | | |
-| Vũ Văn Huy|2A202601342|Báo cáo kết quả đánh giá RAGAS và giải thích vì sao Hybrid Search + RRF đạt hiệu năng cao hơn Dense-only.|Hoàn thành|
+|Nguyễn Quang Hà|2A202601424|(Team Leader & RAG Architect): Quản lý chung, ghép code pipeline chính (supervisor.py & Task 9).|Hoàn Thành|
+|Trương Ngọc Hải|2A202601092|(Data & Dense Search Dev): Task 1–3 (Data) + Task 4 (ChromaDB) + Task 5 (Semantic Search & HyDE).|Hoàn Thành|
+|Nguyễn Trần Nghĩa|2A20261664|(Sparse Search & Advanced Reranking Dev): Task 6 (BM25/TF-IDF) + Task 7 (RRF Reranking) + Task 8 (PageIndex Fallback).|Hoàn Thành|
+|Nguyễn Nhật Quang|2A202601452|(Frontend & Chatbot Developer): Xây dựng Streamlit Chatbot app.py + Task 10 (Generation có Citation).|Hoàn thành|
+|Vũ Văn Huy|2A202601342|Báo cáo kết quả đánh giá RAGAS và giải thích vì sao Hybrid Search + RRF đạt hiệu năng cao hơn Dense-only.|Hoàn thành|
 
 ---
 
