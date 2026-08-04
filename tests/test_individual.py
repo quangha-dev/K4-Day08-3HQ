@@ -12,6 +12,7 @@ import json
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 # Project root
 PROJECT_DIR = Path(__file__).parent.parent
@@ -357,6 +358,21 @@ class TestTask6(unittest.TestCase):
         except NotImplementedError:
             self.skipTest("Chưa implement")
 
+    def test_bm25_prioritizes_the_document_with_the_exact_keyword(self):
+        """BM25 ưu tiên document có từ khóa truy vấn."""
+        from src import task6_lexical_search
+
+        corpus = [
+            {"content": "Return and refund policy", "metadata": {"source": "policy"}},
+            {"content": "Payment methods", "metadata": {"source": "payments"}},
+            {"content": "Seller listing regulations", "metadata": {"source": "listing"}},
+        ]
+        with patch.object(task6_lexical_search, "CORPUS", corpus):
+            results = task6_lexical_search.lexical_search("refund", top_k=1)
+
+        self.assertEqual(results[0]["metadata"]["source"], "policy")
+        self.assertGreater(results[0]["score"], 0)
+
 
 # ===========================================================================
 # Task 7 — Reranking (6 điểm)
@@ -413,6 +429,22 @@ class TestTask7(unittest.TestCase):
         except NotImplementedError:
             self.skipTest("Chưa implement")
 
+    def test_rrf_rewards_a_document_found_by_both_rankers(self):
+        """Document xuất hiện ở cả dense và lexical lists phải đứng đầu."""
+        from src.task7_reranking import rerank_rrf
+
+        shared = {"content": "Refund policy", "score": 0.5, "metadata": {}}
+        results = rerank_rrf(
+            [
+                [shared, {"content": "Shipping guide", "score": 0.4, "metadata": {}}],
+                [{"content": "Payment methods", "score": 2.0, "metadata": {}}, shared],
+            ],
+            top_k=1,
+        )
+
+        self.assertEqual(results[0]["content"], "Refund policy")
+        self.assertAlmostEqual(results[0]["score"], 1 / 61 + 1 / 62)
+
 
 # ===========================================================================
 # Task 8 — PageIndex Vectorless (4 điểm)
@@ -443,6 +475,38 @@ class TestTask8(unittest.TestCase):
                 self.assertEqual(results[0].get("source"), "pageindex")
         except (NotImplementedError, Exception) as e:
             self.skipTest(f"PageIndex chưa sẵn sàng: {e}")
+
+    def test_parses_pageindex_results_without_network_access(self):
+        """PageIndex results được đổi về retrieval contract chung."""
+        from src import task8_pageindex_vectorless
+
+        class FakeClient:
+            def __init__(self, api_key):
+                self.api_key = api_key
+
+            def submit_query(self, doc_id, query):
+                return {"retrieval_id": f"retrieval-{doc_id}"}
+
+            def get_retrieval(self, retrieval_id):
+                return {
+                    "retrieved_nodes": [
+                        {
+                            "relevant_contents": [
+                                [{"section_title": "Refunds", "relevant_content": "Refund within 15 days."}]
+                            ]
+                        }
+                    ]
+                }
+
+        with (
+            patch.object(task8_pageindex_vectorless, "PAGEINDEX_API_KEY", "test-key"),
+            patch.object(task8_pageindex_vectorless, "PAGEINDEX_DOCUMENT_IDS", ("doc-1",)),
+            patch.object(task8_pageindex_vectorless, "PageIndexClient", FakeClient),
+        ):
+            results = task8_pageindex_vectorless.pageindex_search("refund", top_k=1)
+
+        self.assertEqual(results[0]["content"], "Refund within 15 days.")
+        self.assertEqual(results[0]["source"], "pageindex")
 
 
 # ===========================================================================
