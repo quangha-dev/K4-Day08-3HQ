@@ -1,259 +1,364 @@
-"""
-RAG Evaluation Pipeline & A/B Testing.
+"""Evaluate the RAG pipeline with the four standard RAGAS metrics.
 
-Sử dụng RAGAS / DeepEval để đánh giá chất lượng RAG pipeline.
-
-Metrics:
-    - Faithfulness: Câu trả lời có bám sát context không?
-    - Answer Relevancy: Câu trả lời có trả lời đúng trọng tâm câu hỏi không?
-    - Context Recall: Retriever có lấy đủ bằng chứng từ ground truth không?
-    - Context Precision: % context lấy về thực sự hữu ích.
-
-Deliverables:
-    - group_project/evaluation/golden_dataset.json (≥15 Q&A pairs)
-    - group_project/evaluation/eval_pipeline.py
-    - group_project/evaluation/results.md
+Outputs:
+    evaluation_predictions.json  Cached RAG answers and retrieved contexts
+    ragas_matrix.csv             Per-question RAGAS metric matrix
+    ragas_matrix.json            Same matrix in JSON format
+    results.md                   Aggregate scores and per-question table
 """
 
+import argparse
 import json
 import os
+import sys
 from pathlib import Path
+from typing import Any
 
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except ImportError:
-    pass
+EVALUATION_DIR = Path(__file__).resolve().parent
+PROJECT_DIR = EVALUATION_DIR.parent.parent
+GOLDEN_DATASET_PATH = EVALUATION_DIR / "golden_dataset.json"
+PREDICTIONS_PATH = EVALUATION_DIR / "evaluation_predictions.json"
+MATRIX_CSV_PATH = EVALUATION_DIR / "ragas_matrix.csv"
+MATRIX_JSON_PATH = EVALUATION_DIR / "ragas_matrix.json"
+RESULTS_PATH = EVALUATION_DIR / "results.md"
 
-GOLDEN_DATASET_PATH = Path(__file__).parent / "golden_dataset.json"
-RESULTS_PATH = Path(__file__).parent / "results.md"
-
-
-def load_golden_dataset() -> list[dict]:
-    """Load golden dataset từ JSON file."""
-    with open(GOLDEN_DATASET_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.insert(0, str(PROJECT_DIR))
 
 
-def evaluate_with_ragas(pipeline_fn, golden_dataset: list[dict], config_name: str = "Config") -> list[dict]:
-    """
-    Evaluate RAG pipeline sử dụng RAGAS (hoặc benchmark evaluator nếu không có RAGAS API key).
-
-    Args:
-        pipeline_fn: Callable nhận question -> dict {'answer': str, 'sources': list[dict]}
-        golden_dataset: List of {'question', 'expected_answer', 'expected_context'}
-        config_name: Tên của configuration (ví dụ: Hybrid_Rerank, Dense_Only)
-
-    Returns:
-        List of dict chứa kết quả chi tiết từng câu.
-    """
-    print(f"\n==================================================")
-    print(f"Running Evaluation for: {config_name}")
-    print(f"==================================================")
-
-    eval_rows = []
-    
-    # Try importing ragas if available
-    use_ragas_lib = False
+def load_environment() -> None:
+    """Load API keys from the project .env file."""
     try:
-        from ragas import evaluate
-        from ragas.metrics import faithfulness, answer_relevancy, context_recall, context_precision
-        from datasets import Dataset
-        use_ragas_lib = True
-    except ImportError:
-        print("ℹ RAGAS library not installed, running evaluation benchmark...")
+        from dotenv import load_dotenv
+    except ImportError as exc:
+        raise RuntimeError("Run: pip install python-dotenv") from exc
+    load_dotenv(PROJECT_DIR / ".env")
 
-    ragas_eval_data = {"question": [], "answer": [], "contexts": [], "ground_truth": []}
 
-    for idx, item in enumerate(golden_dataset, 1):
-        q = item["question"]
-        expected_ans = item["expected_answer"]
-        print(f"[{idx}/{len(golden_dataset)}] Evaluating: '{q[:50]}...'")
+def load_golden_dataset(limit: int | None = None) -> list[dict]:
+    """Load and validate question, reference answer, and reference context."""
+    if not GOLDEN_DATASET_PATH.exists():
+        raise FileNotFoundError(f"Missing dataset: {GOLDEN_DATASET_PATH}")
+    data = json.loads(GOLDEN_DATASET_PATH.read_text(encoding="utf-8"))
+    if not isinstance(data, list):
+        raise ValueError("golden_dataset.json must contain a JSON array")
+    required = {"question", "expected_answer", "expected_context"}
+    for index, row in enumerate(data, 1):
+        missing = required - set(row)
+        if missing:
+            raise ValueError(f"Dataset row {index} is missing: {sorted(missing)}")
+    return data[:limit] if limit is not None else data
 
-        try:
-            res = pipeline_fn(q)
-            ans = res.get("answer", "")
-            sources = res.get("sources", [])
-            contexts = [s.get("content", "") for s in sources]
-        except Exception as e:
-            print(f"  ⚠ Pipeline call error on query: {e}")
-            ans = "I cannot verify this information"
-            contexts = []
 
-        ragas_eval_data["question"].append(q)
-        ragas_eval_data["answer"].append(ans)
-        ragas_eval_data["contexts"].append(contexts)
-        ragas_eval_data["ground_truth"].append(expected_ans)
-
-        # Benchmark calculation
-        has_citation = "[" in ans and "]" in ans
-        context_text = " ".join(contexts).lower()
-        keyword_match = sum(1 for kw in expected_ans.lower().split() if kw in context_text)
-        total_kw = max(1, len(expected_ans.lower().split()))
-        recall_approx = min(1.0, keyword_match / total_kw + (0.2 if contexts else 0.0))
-        precision_approx = 0.85 if contexts and len(contexts) <= 5 else 0.6
-        faithfulness_approx = 0.90 if has_citation or "không thể" in ans.lower() else 0.78
-        relevancy_approx = 0.88 if len(ans) > 20 else 0.50
-
-        # Adjust for config (Hybrid vs Dense-only)
-        if "Dense" in config_name:
-            recall_approx *= 0.80
-            precision_approx *= 0.82
-            faithfulness_approx *= 0.88
-
-        eval_rows.append({
-            "question": q,
-            "answer": ans,
-            "faithfulness": round(faithfulness_approx, 3),
-            "answer_relevance": round(relevancy_approx, 3),
-            "context_recall": round(recall_approx, 3),
-            "context_precision": round(precision_approx, 3),
+def _context_records(sources: list[dict]) -> list[dict]:
+    """Keep the exact retrieved chunks and their scores for auditability."""
+    records = []
+    for source in sources:
+        records.append({
+            "content": str(source.get("content") or ""),
+            "score": source.get("score"),
+            "score_type": source.get("score_type"),
+            "raw_scores": source.get("raw_scores") or {},
+            "retrieval_source": source.get("retrieval_source", source.get("source")),
+            "metadata": source.get("metadata") or {},
         })
+    return records
 
-    if use_ragas_lib and os.getenv("OPENROUTER_API_KEY"):
-        try:
-            print("▶ Executing RAGAS LLM Judge metrics...")
-            ds = Dataset.from_dict(ragas_eval_data)
-            ragas_res = evaluate(
-                ds,
-                metrics=[faithfulness, answer_relevancy, context_recall, context_precision]
+
+def _generate_semantic_only(question: str, top_k: int = 5) -> dict:
+    """Generate with dense cosine retrieval only, using the same Task 10 prompt/LLM."""
+    from src.task5_semantic_search import semantic_search
+    from src.task10_generation import (
+        SYSTEM_PROMPT,
+        TEMPERATURE,
+        TOP_P,
+        _create_llm_client,
+        format_context,
+        reorder_for_llm,
+    )
+
+    sources = semantic_search(question, top_k=top_k)
+    for source in sources:
+        source["retrieval_source"] = "semantic"
+        source["source"] = "semantic"
+        source.setdefault("score_type", "cosine")
+    reordered = reorder_for_llm(sources)
+    context = format_context(reordered)
+    user_message = f"""<context>
+{context}
+</context>
+
+<question>
+{question}
+</question>"""
+    client, model, _provider = _create_llm_client()
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_message},
+        ],
+        temperature=TEMPERATURE,
+        top_p=TOP_P,
+    )
+    return {
+        "answer": response.choices[0].message.content or "",
+        "sources": reordered,
+        "retrieval_source": "semantic",
+        "context_used": context,
+    }
+
+
+def generate_predictions(golden: list[dict], configs: list[str]) -> list[dict]:
+    """Run Hybrid and/or Semantic-only pipelines and cache all A/B outputs."""
+    from src.task10_generation import generate_with_citation
+
+    generators = {
+        "hybrid": generate_with_citation,
+        "semantic": _generate_semantic_only,
+    }
+
+    predictions = []
+    total = len(golden) * len(configs)
+    position = 0
+    for config in configs:
+        for item in golden:
+            position += 1
+            question = item["question"]
+            print(f"[{position}/{total}] [{config}] Generating: {question[:65]}")
+            try:
+                result = generators[config](question)
+                sources = _context_records(result.get("sources") or [])
+                prediction = {
+                    "config": config,
+                    "question": question,
+                    "answer": str(result.get("answer") or ""),
+                    "contexts": [s["content"] for s in sources if s["content"]],
+                    "reference_answer": item["expected_answer"],
+                    "reference_context": item["expected_context"],
+                    "retrieval_source": result.get("retrieval_source"),
+                    "context_used": result.get("context_used", ""),
+                    "retrieved_chunks": sources,
+                    "error": None,
+                }
+            except Exception as exc:
+                prediction = {
+                    "config": config,
+                    "question": question,
+                    "answer": "",
+                    "contexts": [],
+                    "reference_answer": item["expected_answer"],
+                    "reference_context": item["expected_context"],
+                    "retrieval_source": config,
+                    "context_used": "",
+                    "retrieved_chunks": [],
+                    "error": f"{type(exc).__name__}: {exc}",
+                }
+                print(f"  ERROR: {prediction['error']}")
+            predictions.append(prediction)
+            PREDICTIONS_PATH.write_text(
+                json.dumps(predictions, ensure_ascii=False, indent=2), encoding="utf-8"
             )
-            df_ragas = ragas_res.to_pandas()
-            return df_ragas.to_dict(orient="records")
-        except Exception as err:
-            print(f"  ⚠ RAGAS LLM Evaluation failed (likely Rate Limit or API): {err}")
-            print("  ✓ Fallback to benchmark evaluation.")
-
-    return eval_rows
+    return predictions
 
 
-def compare_configs(golden_dataset: list[dict]) -> dict:
-    """
-    So sánh A/B giữa 2 Configs:
-      - Config A: Hybrid Search (Semantic + BM25) + RRF Reranking
-      - Config B: Dense-Only Search (Semantic search, không rerank)
-    """
-    results = {}
-
-    def pipeline_config_a(query: str) -> dict:
-        """Config A: Hybrid + RRF Reranking."""
-        try:
-            from src.task10_generation import generate_with_citation
-            return generate_with_citation(query)
-        except Exception:
-            return {
-                "answer": f"Theo quy định Shopee, đối với '{query}', vui lòng tuân thủ điều khoản [Returns Policy, 2026].",
-                "sources": [{"content": f"Chính sách quy định chi tiết về {query}.", "score": 0.88}]
-            }
-
-    def pipeline_config_b(query: str) -> dict:
-        """Config B: Dense-Only Search."""
-        try:
-            from src.task5_semantic_search import semantic_search
-            chunks = semantic_search(query, top_k=5)
-            ans = f"Dựa trên tìm kiếm dense: {chunks[0]['content'][:150]}" if chunks else "Không tìm thấy"
-            return {"answer": ans, "sources": chunks}
-        except Exception:
-            return {
-                "answer": f"Kết quả tìm kiếm dense cho: {query}.",
-                "sources": [{"content": f"Đoạn văn bản dense liên quan {query}.", "score": 0.55}]
-            }
-
-    print("\n--- [A/B Testing] Config A: Hybrid Search + RRF Rerank ---")
-    results["Config_A"] = evaluate_with_ragas(pipeline_config_a, golden_dataset, config_name="Config A (Hybrid + RRF Rerank)")
-
-    print("\n--- [A/B Testing] Config B: Dense-Only Search ---")
-    results["Config_B"] = evaluate_with_ragas(pipeline_config_b, golden_dataset, config_name="Config B (Dense-Only)")
-
-    return results
+def load_cached_predictions(golden: list[dict], configs: list[str]) -> list[dict]:
+    """Load a complete prediction cache created by generate_predictions()."""
+    if not PREDICTIONS_PATH.exists():
+        raise FileNotFoundError(
+            f"Prediction cache not found: {PREDICTIONS_PATH}. Remove --reuse-predictions."
+        )
+    predictions = json.loads(PREDICTIONS_PATH.read_text(encoding="utf-8"))
+    questions = {row["question"] for row in golden}
+    selected = []
+    for config in configs:
+        config_rows = [
+            row for row in predictions
+            if row.get("config") == config and row.get("question") in questions
+        ]
+        selected.extend(config_rows[: len(golden)])
+    predictions = selected
+    expected_count = len(golden) * len(configs)
+    if len(predictions) < expected_count:
+        raise ValueError(
+            f"Cache has {len(predictions)} rows but evaluation needs {expected_count}"
+        )
+    return predictions[:expected_count]
 
 
-def calculate_mean_metrics(rows: list[dict]) -> dict:
-    metrics = ["faithfulness", "answer_relevance", "context_recall", "context_precision"]
-    means = {}
-    for m in metrics:
-        vals = [r[m] for r in rows if m in r]
-        means[m] = sum(vals) / len(vals) if vals else 0.8
-    return means
+def _build_ragas_judges():
+    """Build OpenAI judge and embedding clients for RAGAS 0.1.x."""
+    if not os.getenv("OPENAI_API_KEY"):
+        raise RuntimeError("OPENAI_API_KEY is required for RAGAS evaluation")
+    try:
+        from langchain_openai import ChatOpenAI, OpenAIEmbeddings
+    except ImportError as exc:
+        raise RuntimeError("Run: pip install langchain-openai") from exc
+
+    judge_model = os.getenv("RAGAS_JUDGE_MODEL", "gpt-4o-mini")
+    embedding_model = os.getenv("RAGAS_EMBEDDING_MODEL", "text-embedding-3-small")
+    return (
+        ChatOpenAI(model=judge_model, temperature=0),
+        OpenAIEmbeddings(model=embedding_model),
+    )
 
 
-def export_results(comparison_results: dict):
-    """Export evaluation results & A/B analysis ra results.md"""
-    rows_a = comparison_results["Config_A"]
-    rows_b = comparison_results["Config_B"]
+def evaluate_with_ragas(predictions: list[dict]):
+    """Calculate the per-question 4-column RAGAS score matrix."""
+    try:
+        from datasets import Dataset
+        from ragas import evaluate
+        from ragas.metrics import (
+            answer_relevancy,
+            context_precision,
+            context_recall,
+            faithfulness,
+        )
+    except ImportError as exc:
+        raise RuntimeError(
+            'Install evaluation dependencies: pip install "ragas==0.1.21" datasets langchain-openai'
+        ) from exc
 
-    mean_a = calculate_mean_metrics(rows_a)
-    mean_b = calculate_mean_metrics(rows_b)
+    valid = [row for row in predictions if row["answer"] and row["contexts"]]
+    if not valid:
+        raise RuntimeError("No successful predictions with retrieved contexts to evaluate")
 
-    avg_a = sum(mean_a.values()) / len(mean_a)
-    avg_b = sum(mean_b.values()) / len(mean_b)
+    dataset = Dataset.from_dict({
+        "question": [row["question"] for row in valid],
+        "answer": [row["answer"] for row in valid],
+        "contexts": [row["contexts"] for row in valid],
+        "ground_truth": [row["reference_answer"] for row in valid],
+    })
+    judge_llm, judge_embeddings = _build_ragas_judges()
+    result = evaluate(
+        dataset,
+        metrics=[faithfulness, answer_relevancy, context_recall, context_precision],
+        llm=judge_llm,
+        embeddings=judge_embeddings,
+        raise_exceptions=False,
+    )
+    dataframe = result.to_pandas()
+    dataframe.insert(0, "config", [row["config"] for row in valid])
+    counters: dict[str, int] = {}
+    test_ids = []
+    for row in valid:
+        config = row["config"]
+        counters[config] = counters.get(config, 0) + 1
+        test_ids.append(counters[config])
+    dataframe.insert(1, "test_id", test_ids)
+    return dataframe
 
-    content = f"""# RAG Evaluation Results & A/B Comparison
 
-## Framework Sử Dụng
+def _safe_mean(dataframe, column: str) -> float:
+    values = dataframe[column].dropna()
+    return float(values.mean()) if len(values) else 0.0
 
-> **Framework:** RAGAS (Retrieval-Augmented Generation Assessment System)  
-> **Golden Dataset:** 15 cặp Q&A chuẩn miền TMĐT Shopee Vietnam (`group_project/evaluation/golden_dataset.json`)
 
----
+def save_results(dataframe, predictions: list[dict]) -> None:
+    """Persist the RAGAS matrix in machine-readable and Markdown formats."""
+    dataframe.to_csv(MATRIX_CSV_PATH, index=False, encoding="utf-8-sig")
+    rows: list[dict[str, Any]] = dataframe.to_dict(orient="records")
+    MATRIX_JSON_PATH.write_text(
+        json.dumps(rows, ensure_ascii=False, indent=2, default=str), encoding="utf-8"
+    )
 
-## Overall Scores (Bảng Điểm So Sánh A/B)
+    metric_columns = [
+        "faithfulness",
+        "answer_relevancy",
+        "context_recall",
+        "context_precision",
+    ]
+    summaries = {}
+    for config in dataframe["config"].unique():
+        config_frame = dataframe[dataframe["config"] == config]
+        metric_means = {
+            metric: _safe_mean(config_frame, metric) for metric in metric_columns
+        }
+        metric_means["overall"] = sum(metric_means.values()) / len(metric_columns)
+        summaries[config] = metric_means
+    failures = [row for row in predictions if row.get("error")]
 
-| Metric | Config A (Hybrid + RRF Rerank) | Config B (Dense-Only) | Δ (Cải thiện) |
-|--------|-------------------------------|----------------------|---------------|
-| **Faithfulness** | {mean_a['faithfulness']:.3f} | {mean_b['faithfulness']:.3f} | +{mean_a['faithfulness'] - mean_b['faithfulness']:.3f} |
-| **Answer Relevance** | {mean_a['answer_relevance']:.3f} | {mean_b['answer_relevance']:.3f} | +{mean_a['answer_relevance'] - mean_b['answer_relevance']:.3f} |
-| **Context Recall** | {mean_a['context_recall']:.3f} | {mean_b['context_recall']:.3f} | +{mean_a['context_recall'] - mean_b['context_recall']:.3f} |
-| **Context Precision** | {mean_a['context_precision']:.3f} | {mean_b['context_precision']:.3f} | +{mean_a['context_precision'] - mean_b['context_precision']:.3f} |
-| **Trung Bình (Average)** | **{avg_a:.3f}** | **{avg_b:.3f}** | **+{avg_a - avg_b:.3f}** |
+    lines = [
+        "# RAGAS Evaluation Results",
+        "",
+        f"- Evaluated rows: {len(dataframe)}",
+        f"- Pipeline errors: {len(failures)}",
+        f"- Judge model: `{os.getenv('RAGAS_JUDGE_MODEL', 'gpt-4o-mini')}`",
+        f"- Embedding model: `{os.getenv('RAGAS_EMBEDDING_MODEL', 'text-embedding-3-small')}`",
+        "",
+        "## Aggregate Matrix",
+        "",
+        "| Config | Faithfulness | Answer Relevancy | Context Recall | Context Precision | Overall |",
+        "|---|---:|---:|---:|---:|---:|",
+    ]
+    for config, means in summaries.items():
+        lines.append(
+            f"| {config} | {means['faithfulness']:.4f} | "
+            f"{means['answer_relevancy']:.4f} | {means['context_recall']:.4f} | "
+            f"{means['context_precision']:.4f} | {means['overall']:.4f} |"
+        )
+    lines.extend([
+        "",
+        "## Per-question Matrix",
+        "",
+        "| Config | ID | Question | Faithfulness | Answer Relevancy | Context Recall | Context Precision |",
+        "|---|---:|---|---:|---:|---:|---:|",
+    ])
+    for _, row in dataframe.iterrows():
+        question = str(row["question"]).replace("|", "\\|").replace("\n", " ")
+        values = [row.get(metric) for metric in metric_columns]
+        formatted = ["N/A" if value != value else f"{float(value):.4f}" for value in values]
+        lines.append(
+            f"| {row['config']} | {int(row['test_id'])} | {question} | "
+            + " | ".join(formatted) + " |"
+        )
 
----
 
-## A/B Comparison Analysis
+    if failures:
+        lines.extend(["", "## Pipeline Errors", ""])
+        for row in failures:
+            lines.append(f"- **{row['question']}** — `{row['error']}`")
 
-**Config A (Hybrid Search + RRF Reranking):**
-- Kết hợp Semantic Search (BGE-M3 Dense Embedding) + Lexical Search (BM25 Sparse).
-- Áp dụng thuật toán Reciprocal Rank Fusion ($k=60$) để gộp thứ hạng.
+    RESULTS_PATH.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
-**Config B (Dense-Only Search):**
-- Chỉ sử dụng Semantic Search theo Cosine Similarity, không áp dụng BM25 hay RRF Reranking.
 
-**Kết Luận:**
-Config A đạt hiệu năng cao hơn đáng kể trên cả 4 chỉ số (đặc biệt là **Context Recall** tăng **+{mean_a['context_recall'] - mean_b['context_recall']:.3f}**). Việc kết hợp BM25 giúp truy xuất chính xác các từ khóa số liệu (ví dụ: *15 ngày*, *50.000.000 VNĐ*, *20.000 VNĐ*), trong khi Semantic Search đảm bảo bắt đúng ý nghĩa câu hỏi.
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Evaluate the RAG pipeline using RAGAS")
+    parser.add_argument("--limit", type=int, default=None, help="Evaluate the first N questions")
+    parser.add_argument(
+        "--configs",
+        nargs="+",
+        choices=["hybrid", "semantic"],
+        default=["hybrid", "semantic"],
+        help="Retrieval configurations to compare (default: hybrid semantic)",
+    )
+    parser.add_argument(
+        "--reuse-predictions",
+        action="store_true",
+        help="Reuse evaluation_predictions.json instead of calling Task 10 again",
+    )
+    args = parser.parse_args()
+    if args.limit is not None and args.limit <= 0:
+        parser.error("--limit must be greater than zero")
 
----
-
-## Worst Performers (Top 3 Câu Hỏi Cần Cải Thiện)
-
-| # | Question | Faithfulness | Relevance | Recall | Failure Stage | Root Cause |
-|---|----------|-------------|-----------|--------|---------------|------------|
-| 1 | Người bán không được đăng bán những sản phẩm nào? | 0.80 | 0.85 | 0.70 | Retrieval | Danh sách cấm quá dài, 1 chunk (800 chars) bị cắt ngang. |
-| 2 | Hạn mức ShopeePay một ngày là bao nhiêu? | 0.85 | 0.80 | 0.75 | Generation | LLM chưa phân biệt rõ tài khoản KYC vs Chưa KYC. |
-| 3 | Khi giao hàng chậm quá 3 ngày cần làm gì? | 0.75 | 0.82 | 0.68 | Retrieval | Bài tin tức ngắn chứa ít từ khóa tương đồng với câu hỏi. |
-
----
-
-## Recommendations (Đề Xuất Cải Tiến Pipeline)
-
-### Cải tiến 1: Tối ưu hóa Chunking Strategy
-- **Action:** Chuyển từ `RecursiveCharacterTextSplitter` thuần sang `MarkdownHeaderTextSplitter` để giữ nguyên các bảng chính sách và danh mục cấm trong cùng 1 chunk.
-- **Expected impact:** Tăng điểm Context Recall lên ≥ 0.90 cho các câu hỏi liệt kê danh mục.
-
-### Cải tiến 2: Bổ sung Metadata Filtering (`customer_role`)
-- **Action:** Áp dụng bộ lọc metadata `customer_role` (`buyer`/`seller`) trực tiếp vào truy vấn ChromaDB dựa trên ý định câu hỏi.
-- **Expected impact:** Giảm bớt 30% nhiễu context, nâng Context Precision từ 0.82 lên 0.90.
-
-### Cải tiến 3: Tăng Cường Document Reordering
-- **Action:** Tiếp tục duy trì pattern reorder `front + back[::-1]` để hạn chế hiện tượng *Lost in the middle* đối với các câu hỏi phức tạp.
-- **Expected impact:** Nâng Faithfulness từ 0.88 lên 0.95.
-"""
-    RESULTS_PATH.write_text(content, encoding="utf-8")
-    print(f"\n✓ Đã cập nhật thành công kết quả báo cáo ra: {RESULTS_PATH}")
+    load_environment()
+    golden = load_golden_dataset(args.limit)
+    print(f"Loaded {len(golden)} test cases; configs: {', '.join(args.configs)}")
+    predictions = (
+        load_cached_predictions(golden, args.configs)
+        if args.reuse_predictions
+        else generate_predictions(golden, args.configs)
+    )
+    matrix = evaluate_with_ragas(predictions)
+    save_results(matrix, predictions)
+    print(f"Saved CSV matrix: {MATRIX_CSV_PATH}")
+    print(f"Saved JSON matrix: {MATRIX_JSON_PATH}")
+    print(f"Saved report: {RESULTS_PATH}")
 
 
 if __name__ == "__main__":
-    dataset = load_golden_dataset()
-    print(f"Loaded {len(dataset)} test cases from golden_dataset.json")
-
-    comparison = compare_configs(dataset)
-    export_results(comparison)
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8")
+    main()
