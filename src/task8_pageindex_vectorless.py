@@ -111,6 +111,7 @@ def pageindex_search(query: str, top_k: int = 5) -> list[dict]:
         return []
 
     client = PageIndexClient(api_key=PAGEINDEX_API_KEY)
+    all_results = []
     for document_id in document_ids:
         response = client.submit_query(document_id, query)
         retrieval_id = response.get("retrieval_id") or response["id"]
@@ -119,11 +120,12 @@ def pageindex_search(query: str, top_k: int = 5) -> list[dict]:
             retrieval = client.get_retrieval(retrieval_id)
             results = _extract_results(retrieval, top_k, document_id)
             if results:
-                return results
-            if retrieval.get("status") == "failed":
+                all_results.extend(results)
+                break
+            if retrieval.get("status") in ("failed", "cancelled", "error"):
                 break
             time.sleep(2)
-    return []
+    return sorted(all_results, key=lambda r: r["score"], reverse=True)[:top_k]
 
 
 if __name__ == "__main__":

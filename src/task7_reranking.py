@@ -14,6 +14,9 @@ bất kể nội dung đó có thật sự liên quan đến câu hỏi hay khô
 quyết định fallback ở Task 9 — xem ghi chú ở đó.
 """
 
+from typing import Optional
+
+
 def rerank_cross_encoder(
     query: str, candidates: list[dict], top_k: int = 5
 ) -> list[dict]:
@@ -28,29 +31,6 @@ def rerank_cross_encoder(
     Returns:
         List of top_k candidates, re-scored và sorted by rerank_score descending.
     """
-    # TODO: Implement cross-encoder reranking
-    #
-    # Option A: Jina Reranker API
-    # import requests
-    # response = requests.post(
-    #     "https://api.jina.ai/v1/rerank",
-    #     headers={"Authorization": f"Bearer {JINA_API_KEY}"},
-    #     json={
-    #         "model": "jina-reranker-v2-base-multilingual",
-    #         "query": query,
-    #         "documents": [c["content"] for c in candidates],
-    #         "top_n": top_k
-    #     }
-    # )
-    # reranked = response.json()["results"]
-    # return [
-    #     {**candidates[r["index"]], "score": r["relevance_score"]}
-    #     for r in reranked
-    # ]
-    #
-    # Option B: Local model (Qwen3-Reranker)
-    # from transformers import AutoModelForSequenceClassification, AutoTokenizer
-    # ...
     raise NotImplementedError("Implement rerank_cross_encoder")
 
 
@@ -74,36 +54,6 @@ def rerank_mmr(
     Returns:
         List of top_k candidates selected by MMR.
     """
-    # TODO: Implement MMR
-    #
-    # selected = []
-    # remaining = list(range(len(candidates)))
-    #
-    # for _ in range(min(top_k, len(candidates))):
-    #     best_idx = None
-    #     best_score = float('-inf')
-    #
-    #     for idx in remaining:
-    #         # Relevance to query
-    #         relevance = cosine_sim(query_embedding, candidates[idx]["embedding"])
-    #
-    #         # Max similarity to already selected
-    #         max_sim_to_selected = 0
-    #         for sel_idx in selected:
-    #             sim = cosine_sim(candidates[idx]["embedding"], candidates[sel_idx]["embedding"])
-    #             max_sim_to_selected = max(max_sim_to_selected, sim)
-    #
-    #         # MMR score
-    #         mmr_score = lambda_param * relevance - (1 - lambda_param) * max_sim_to_selected
-    #
-    #         if mmr_score > best_score:
-    #             best_score = mmr_score
-    #             best_idx = idx
-    #
-    #     selected.append(best_idx)
-    #     remaining.remove(best_idx)
-    #
-    # return [candidates[i] for i in selected]
     raise NotImplementedError("Implement rerank_mmr")
 
 
@@ -130,15 +80,23 @@ def rerank_rrf(
 
     scores: dict[str, float] = {}
     candidates: dict[str, dict] = {}
+
     for ranked_list in ranked_lists:
+        seen_in_list = set()
         for rank, item in enumerate(ranked_list, start=1):
-            content = item["content"]
-            scores[content] = scores.get(content, 0.0) + 1.0 / (k + rank)
-            candidates.setdefault(content, item)
+            key = item.get("metadata", {}).get("chunk_id") or item.get("content", "")
+            if key in seen_in_list:
+                continue
+            seen_in_list.add(key)
+            scores[key] = scores.get(key, 0.0) + 1.0 / (k + rank)
+            if key not in candidates:
+                cand = dict(item)
+                cand["raw_score"] = item.get("score")
+                candidates[key] = cand
 
     return [
-        {**candidates[content], "score": score}
-        for content, score in sorted(scores.items(), key=lambda item: item[1], reverse=True)[:top_k]
+        {**candidates[key], "score": score}
+        for key, score in sorted(scores.items(), key=lambda item: item[1], reverse=True)[:top_k]
     ]
 
 

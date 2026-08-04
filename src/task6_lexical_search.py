@@ -23,20 +23,35 @@ from rank_bm25 import BM25Okapi
 STANDARDIZED_DIR = Path(__file__).parent.parent / "data" / "standardized"
 CORPUS: list[dict] = []  # List of {'content': str, 'metadata': dict}
 
+_CACHED_BM25 = None
+_CACHED_CORPUS_ID = None
+
 
 def _tokenize(text: str) -> list[str]:
     return re.findall(r"\w+", text.lower(), flags=re.UNICODE)
 
 
 def _load_corpus() -> list[dict]:
-    return [
-        {
-            "content": content,
-            "metadata": {"source": file.name, "type": file.parent.name},
-        }
-        for file in STANDARDIZED_DIR.rglob("*.md")
-        if (content := file.read_text(encoding="utf-8").strip())
-    ]
+    corpus = []
+    # Sort files deterministically
+    for file in sorted(STANDARDIZED_DIR.rglob("*.md")):
+        text = file.read_text(encoding="utf-8").strip()
+        if not text:
+            continue
+        # Split markdown by sections/paragraphs for finer granularity
+        sections = [s.strip() for s in text.split("\n\n") if s.strip()]
+        for idx, sec in enumerate(sections):
+            corpus.append(
+                {
+                    "content": sec,
+                    "metadata": {
+                        "source": file.name,
+                        "type": file.parent.name,
+                        "chunk_id": f"{file.name}#section-{idx}",
+                    },
+                }
+            )
+    return corpus
 
 
 def build_bm25_index(corpus: list[dict]):
@@ -47,6 +62,15 @@ def build_bm25_index(corpus: list[dict]):
         corpus: List of {'content': str, 'metadata': dict}
     """
     return BM25Okapi([_tokenize(doc["content"]) for doc in corpus])
+
+
+def _get_bm25_index(corpus: list[dict]):
+    global _CACHED_BM25, _CACHED_CORPUS_ID
+    corpus_id = id(corpus)
+    if _CACHED_BM25 is None or _CACHED_CORPUS_ID != corpus_id:
+        _CACHED_BM25 = build_bm25_index(corpus)
+        _CACHED_CORPUS_ID = corpus_id
+    return _CACHED_BM25
 
 
 def lexical_search(query: str, top_k: int = 10) -> list[dict]:
@@ -70,7 +94,8 @@ def lexical_search(query: str, top_k: int = 10) -> list[dict]:
     if top_k <= 0 or not corpus or not tokens:
         return []
 
-    scores = build_bm25_index(corpus).get_scores(tokens)
+    bm25 = _get_bm25_index(corpus)
+    scores = bm25.get_scores(tokens)
     results = [
         {
             "content": doc["content"],
