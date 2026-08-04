@@ -211,16 +211,29 @@ def generate_with_citation(query: str, top_k: int = TOP_K) -> dict:
     context = format_context(reordered)
 
     # Step 4: Build prompt
-    # Step 4: Inject context và question vào prompt
-    user_message = f"""
-        <context>
-            {context}
-        </context>
+    # Dùng XML tags để LLM phân biệt rõ ràng context vs câu hỏi,
+    # tránh LLM nhầm lẫn phần context là câu hỏi hoặc là lời yêu cầu.
+    # Nhắc lại yêu cầu citation và giới hạn trả lời trong phần instruction
+    # giúp LLM "nhớ" rules quan trọng ngay trước khi sinh câu trả lời.
+    user_message = f"""\
+    Dưới đây là các tài liệu chính sách liên quan được tìm kiếm từ cơ sở dữ liệu:
 
-        <question>
-            {query}
-        </question>
-        """
+    <context>
+        {context}
+    </context>
+
+    Câu hỏi của người dùng:
+
+    <question>
+        {query}
+    </question>
+
+    Yêu cầu khi trả lời:
+    - Chỉ sử dụng thông tin có trong <context> ở trên, không bịa đặt thêm.
+    - Mỗi khẳng định phải kèm trích dẫn nguồn ngay sau, ví dụ: [Chính sách Thanh toán Shopee]
+    - Nếu context không đủ thông tin, trả lời: "Tôi chưa tìm thấy thông tin về vấn đề này trong tài liệu hiện có."
+    - Trả lời bằng tiếng Việt, ngắn gọn, có cấu trúc rõ ràng.\
+    """
 
 
     # Step 5: Call LLM (OpenRouter / OpenAI API)
