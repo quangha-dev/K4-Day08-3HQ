@@ -1,17 +1,77 @@
 [
   {
     "question": "Người mua có thể yêu cầu trả hàng/hoàn tiền trong thời hạn bao lâu sau khi nhận hàng?",
-    "expected_answer": "Trong vòng 15 ngày kể từ khi giao hàng thành công (24 giờ đối với thực phẩm tươi sống/đông lạnh).",
-    "expected_context": "Trang Returns and Refunds Policy, mục Return/Refund Eligibility"
+    "expected_answer": "Trong vòng 15 ngày kể từ khi đơn hàng được cập nhật giao hàng thành công (hoặc 24 giờ đối với thực phẩm tươi sống/đông lạnh).",
+    "expected_context": "Trang Returns and Refunds Policy, mục Thời Hạn Gửi Yêu Cầu Trả Hàng"
   },
   {
-    "question": "Shopee hỗ trợ những phương thức thanh toán nào?",
-    "expected_answer": "ShopeePay Wallet, thẻ tín dụng/ghi nợ, trả góp qua thẻ, QR Code, chuyển khoản qua app ngân hàng, thẻ NAPAS, Apple Pay, Google Pay, và COD.",
-    "expected_context": "Trang Payment Methods Overview"
+    "question": "Thời hạn gửi yêu cầu trả hàng cho sản phẩm thực phẩm tươi sống/đông lạnh là bao lâu?",
+    "expected_answer": "Trong vòng 24 giờ kể từ khi giao hàng thành công.",
+    "expected_context": "Trang Returns and Refunds Policy, mục Thời Hạn Gửi Yêu Cầu Trả Hàng"
   },
   {
-    "question": "Người bán không được đăng bán những sản phẩm nào?",
-    "expected_answer": "Hàng giả/nhái, sản phẩm bất hợp pháp, vi phạm sở hữu trí tuệ, và các mặt hàng nằm trong danh sách cấm của sàn.",
-    "expected_context": "Trang Product Listing Regulations, mục Prohibited Content"
+    "question": "Khi yêu cầu trả hàng/hoàn tiền do hàng vỡ hỏng, người mua cần cung cấp những bằng chứng gì?",
+    "expected_answer": "Video clip quay rõ quá trình mở gói hàng (unboxing video) hiển thị rõ mã vận đơn, hình ảnh chi tiết vết rách/bể vỡ và ảnh chụp toàn bộ sản phẩm nhận được.",
+    "expected_context": "Trang Returns and Refunds Policy, mục Bằng Chứng Cần Cung Cấp"
+  },
+  {
+    "question": "Shopee hỗ trợ phí vận chuyển trả hàng tối đa bao nhiêu nếu người mua tự gửi qua đơn vị ngoài?",
+    "expected_answer": "Shopee hỗ trợ hoàn lại phí vận chuyển tối đa 40.000 VNĐ vào ví ShopeePay sau khi yêu cầu được chấp nhận.",
+    "expected_context": "Trang Returns and Refunds Policy, mục Chi Phí Vận Chuyển Trả Hàng"
+  },
+  {
+    "question": "Shopee hỗ trợ những phương thức thanh toán chính nào?",
+    "expected_answer": "Ví ShopeePay, thẻ tín dụng/ghi nợ (Visa/Mastercard/JCB/Amex), trả góp qua thẻ tín dụng, QR Code (VietQR), chuyển khoản ngân hàng, thẻ ATM nội địa (NAPAS), Apple Pay, Google Pay, và COD (thanh toán khi nhận hàng).",
+    "expected_context": "Trang Payment Methods Overview, mục Danh Sách Phương Thức Thanh Toán Được Hỗ Trợ"
+  },
+  {
+    "question": "Hạn mức thanh toán tối đa trong một ngày qua ví ShopeePay đối với tài khoản đã định danh (KYC) là bao nhiêu?",
+    "expected_answer": "Tối đa 50.000.000 VNĐ/ngày và tối đa 100.000.000 VNĐ/tháng.",
+    "expected_context": "Trang Payment Methods Overview, mục Hạn Mức Giao Dịch ShopeePay"
+  },
+  {
+    "question": "Nếu thanh toán qua Thẻ Tín Dụng, thời gian hoàn tiền sau khi hủy đơn/hoàn hàng là bao lâu?",
+    "expected_answer": "Tiền sẽ được hoàn trả vào hạn mức thẻ trong vòng 7 - 14 ngày làm việc tùy theo ngân hàng phát hành.",
+    "expected_context": "Trang Payment Methods Overview, mục Quy Định Hoàn Tiền Theo Phương Thức Thanh Toán"
+  },
+  {
+    "question": "Tiền hoàn cho đơn hàng thanh toán COD sẽ được gửi vào đâu và trong thời gian bao lâu?",
+    "expected_answer": "Tiền hoàn sẽ được chuyển trực tiếp vào Số Dư Tài Khoản ShopeePay hoặc Ví ShopeePay trong vòng 24 giờ.",
+    "expected_context": "Trang Payment Methods Overview, mục Quy Định Hoàn Tiền Theo Phương Thức Thanh Toán"
+  },
+  {
+    "question": "Người bán không được đăng bán những mặt hàng nào trên Shopee?",
+    "expected_answer": "Hàng giả/nhái, vi phạm quyền sở hữu trí tuệ, vũ khí, chất cháy nổ, thuốc lá/vape, thuốc kê đơn không giấy phép, và động vật hoang dã quý hiếm.",
+    "expected_context": "Trang Product Listing Regulations, mục Danh Mục Sản Phẩm Bị Cấm Đăng Bán"
+  },
+  {
+    "question": "Người bán phải xác nhận và giao hàng cho đơn vị vận chuyển trong thời hạn bao lâu sau khi phát sinh đơn?",
+    "expected_answer": "Trong vòng 24 giờ kể từ khi phát sinh đơn hàng.",
+    "expected_context": "Trang Product Listing Regulations, mục Quy Định Về Hủy Đơn Hàng Do Lỗi Người Bán"
+  },
+  {
+    "question": "Shop bị hủy quá 10% tổng số đơn trong tuần sẽ chịu hình phạt gì?",
+    "expected_answer": "Shop sẽ bị tính điểm phạt Sao Quả Quả (Penalty points).",
+    "expected_context": "Trang Product Listing Regulations, mục Tỷ lệ đơn hàng không thành công"
+  },
+  {
+    "question": "Mức phí phạt đối với mỗi đơn hàng bị hủy do lỗi hết hàng hoặc không giao đúng hạn của người bán là bao nhiêu?",
+    "expected_answer": "Phí phạt hệ thống là 20.000 VNĐ cho mỗi đơn hàng bị hủy.",
+    "expected_context": "Trang Product Listing Regulations, mục Phí phạt hủy đơn"
+  },
+  {
+    "question": "Làm thế nào để theo dõi hành trình đơn hàng trên ứng dụng Shopee?",
+    "expected_answer": "Vào mục Tôi > Đang giao > Chọn đơn hàng cần theo dõi > Bấm vào thông tin vận chuyển để xem vị trí bưu kiện thực tế.",
+    "expected_context": "Trang News Article 01, Hướng Dẫn Theo Dõi Đơn Hàng"
+  },
+  {
+    "question": "Người mua nên làm gì nếu đơn hàng bị chậm quá 3 ngày so với thời gian dự kiến?",
+    "expected_answer": "Người mua nên bấm nút 'Liên hệ hỗ trợ' ngay trên đơn hàng để được nhân viên xử lý.",
+    "expected_context": "Trang News Article 01, Hướng Dẫn Theo Dõi Đơn Hàng"
+  },
+  {
+    "question": "Tài khoản ví ShopeePay chưa định danh có thể thực hiện thanh toán không?",
+    "expected_answer": "Tài khoản chưa định danh không thể thực hiện giao dịch thanh toán hoặc rút tiền.",
+    "expected_context": "Trang Payment Methods Overview, mục Hạn Mức Giao Dịch ShopeePay"
   }
 ]

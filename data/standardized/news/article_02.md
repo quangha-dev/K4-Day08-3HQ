@@ -1,0 +1,41 @@
+---
+schema_version: "1.0"
+document_id: "news:article_02"
+title: "[ShopeePay] Tôi có được hoàn tiền khi gặp sự cố giao dịch qua Ví ShopeePay tại cửa hàng không? | Shopee Trung tâm trợ giúp"
+document_type: "news"
+category: "refunds"
+customer_role: "buyer"
+platform: "Shopee Vietnam"
+language: "vi"
+source_url: "https://help.shopee.vn/portal/4/article/79543-[ShopeePay]-T%c3%b4i-c%c3%b3-%c4%91%c6%b0%e1%bb%a3c-ho%c3%a0n-ti%e1%bb%81n-khi-g%e1%ba%b7p-s%e1%bb%b1-c%e1%bb%91-giao-d%e1%bb%8bch-qua-V%c3%ad-ShopeePay-t%e1%ba%a1i-c%e1%bb%ada-h%c3%a0ng-kh%c3%b4ng%3F?previousPage=other+articles"
+source_file: "article_02.json"
+date_crawled: "2026-08-04T07:38:27.848618+00:00"
+tags: ["ShopeePay", "hoàn tiền"]
+---
+
+# [ShopeePay] Tôi có được hoàn tiền khi gặp sự cố giao dịch qua Ví ShopeePay tại cửa hàng không? | Shopee Trung tâm trợ giúp
+
+## Xin chào, Shopee có thể giúp gì cho bạn?
+### [ShopeePay] Tôi có được hoàn tiền khi gặp sự cố giao dịch qua Ví ShopeePay tại cửa hàng không?
+Bạn có thể được hoàn lại số tiền đã thanh toán nếu gặp phải một trong những sự cố giao dịch dưới đây:
+  1. Số dư **Ví ShopeePay** bị trừ nhiều lần cho 1 giao dịch
+  2. Nhập sai số tiền thanh toán
+  3. Thực hiện lại giao dịch sau khi thanh toán lần đầu được ghi nhận là “Không thành công” trên hệ thống cửa hàng/đơn vị chấp nhận thanh toán
+
+
+**⚠️****Lưu ý:** Trước khi yêu cầu hoàn tiền, bạn có thể thử khắc phục sự cố theo những cách sau:
+  1. Nếu hệ thống cửa hàng/đơn vị chấp nhận thanh toán hiển thị **thanh toán không thành công** , bạn có thể khởi động lại ứng dụng Shopee để kiểm tra liệu trạng thái giao dịch đã được cập nhật chính xác hay chưa. Nếu bạn đã tải lại ứng dụng nhưng trạng thái vẫn hiển thị là “Không thành công”, bạn có thể liên hệ [_Bộ phận CSKH ShopeePay_](https://help.shopeepay.vn/s/contactus?previousPage=other%20articles) để được hướng dẫn xử lý
+  2. Nếu **Ứng dụng báo lỗi** , hãy thử cập nhật ứng dụng Shopee phiên bản mới nhất và thử lại nhé
+
+
+Nếu đã thử khắc phục theo các bước phía trên nhưng vẫn không thành công, bạn có thể yêu cầu hoàn tiền theo các cách sau:
+  1. Yêu cầu cửa hàng/đơn vị chấp nhận thanh toán hoàn lại số tiền bạn đã thanh toán qua phương thức tiền mặt.
+  2. Cung cấp cho [_Bộ phận CSKH ShopeePay_](https://help.shopeepay.vn/s/contactus?previousPage=other%20articles) các thông tin sau để yêu cầu hoàn tiền vào tài khoản Ví ShopeePay của bạn:
+  3. Mã giao dịch
+  4. Ảnh chụp màn hình/hóa đơn thể hiện số tiền bạn đã thanh toán và số tiền mà hệ thống cửa hàng/đơn vị chấp nhận thanh toán thực nhận
+
+
+Yêu cầu sẽ được tiếp nhận và xử lý trong vòng **72 giờ** làm việc.
+Bạn có hài lòng với bài viết này?
+Hài lòng
+Không hài lòng

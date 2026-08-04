@@ -1,46 +1,41 @@
-"""
-Task 9 — Retrieval Pipeline Hoàn Chỉnh.
-
-Kết hợp semantic search + lexical search + reranking + PageIndex fallback
-thành một pipeline thống nhất.
-
-Logic:
-    1. Chạy semantic_search + lexical_search song song
-    2. Merge kết quả (RRF hoặc weighted fusion)
-    3. Rerank
-    4. Nếu top result score < threshold → fallback sang PageIndex
-    5. Return top_k results
-
-⚠️ BẪY THƯỜNG GẶP — đọc kỹ trước khi code:
-    Nếu bạn dùng điểm RRF đã fuse (Task 7) để so với score_threshold, bạn sẽ gặp bug
-    thật: RRF max score luôn ≈ 1/(k+1) ≈ 0.0164 (k=60) BẤT KỂ nội dung có liên quan
-    hay không. Nếu đặt threshold thấp (như 0.005) để "hợp" với thang điểm RRF, thực
-    chất KHÔNG câu hỏi nào đủ thấp để trigger fallback nữa — kể cả query hoàn toàn vô
-    nghĩa vẫn trả về kết quả "hybrid" (rác) thay vì fallback đúng như thiết kế.
-
-    Cách sửa đúng: giữ điểm cosine similarity GỐC của semantic_search (trước khi qua
-    RRF) làm căn cứ quyết định fallback, tách biệt khỏi điểm RRF dùng để sắp xếp kết
-    quả cuối cùng. Calibrate threshold bằng cách tự đo: chạy vài câu hỏi chắc chắn
-    liên quan và vài câu chắc chắn lạc đề/rác qua semantic_search, xem khoảng cách
-    điểm số giữa hai nhóm rồi chọn ngưỡng nằm giữa.
-"""
+"""Task 9 — dense/sparse fusion with a dense-cosine-only fallback decision."""
 
 from .task5_semantic_search import semantic_search
 from .task6_lexical_search import lexical_search
-from .task7_reranking import rerank, rerank_rrf
+from .task7_reranking import rerank
 from .task8_pageindex_vectorless import pageindex_search
 
-
-# =============================================================================
-# CONFIGURATION
-# =============================================================================
-
-# TODO: Calibrate threshold này bằng cách tự đo điểm cosine của semantic_search
-# cho câu hỏi liên quan vs câu hỏi lạc đề (xem ghi chú ở trên) — ĐỪNG copy nguyên
-# giá trị mẫu, mỗi corpus/embedding model sẽ cho khoảng điểm khác nhau.
-SCORE_THRESHOLD = 0.3   # Nếu best score (cosine gốc) < threshold → fallback PageIndex
+SCORE_THRESHOLD = 0.3
 DEFAULT_TOP_K = 5
-RERANK_METHOD = "rrf"  # "cross_encoder" | "mmr" | "rrf"
+
+
+def _normalize_result(item: dict, retrieval_source: str) -> dict:
+    metadata = dict(item.get("metadata") or {})
+    metadata.setdefault("chunk_id", None)
+    metadata.setdefault("source_file", metadata.get("source", ""))
+    metadata.setdefault("page", None)
+    score = float(item.get("score", 0.0))
+    score_type = item.get("score_type", "unknown")
+    return {
+        **item,
+        "score": score,
+        "score_type": score_type,
+        "retrieval_source": retrieval_source,
+        "source": retrieval_source,
+        "raw_scores": item.get("raw_scores") or {
+            retrieval_source: {"score": score, "score_type": score_type}
+        },
+        "metadata": metadata,
+    }
+
+
+def _prepare_retriever_results(results: list[dict], retrieval_source: str, score_type: str) -> list[dict]:
+    prepared = []
+    for item in results:
+        normalized = _normalize_result(item, retrieval_source)
+        normalized["score_type"] = item.get("score_type", score_type)
+        prepared.append(normalized)
+    return prepared
 
 
 def retrieve(

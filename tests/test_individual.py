@@ -10,8 +10,10 @@ Mỗi task được test riêng. Tổng: 50 điểm.
 
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 # Project root
 PROJECT_DIR = Path(__file__).parent.parent
@@ -357,6 +359,53 @@ class TestTask6(unittest.TestCase):
         except NotImplementedError:
             self.skipTest("Chưa implement")
 
+    def test_bm25_prioritizes_the_document_with_the_exact_keyword(self):
+        """BM25 ưu tiên document có từ khóa truy vấn."""
+        from src import task6_lexical_search
+
+        corpus = [
+            {"content": "Return and refund policy", "metadata": {"source": "policy"}},
+            {"content": "Payment methods", "metadata": {"source": "payments"}},
+            {"content": "Seller listing regulations", "metadata": {"source": "listing"}},
+        ]
+        with patch.object(task6_lexical_search, "CORPUS", corpus):
+            results = task6_lexical_search.lexical_search("refund", top_k=1)
+
+        self.assertEqual(results[0]["metadata"]["source"], "policy")
+        self.assertGreater(results[0]["score"], 0)
+
+    def test_bm25_returns_no_results_when_no_terms_match(self):
+        """Query không có keyword không được trả document score 0."""
+        from src import task6_lexical_search
+
+        corpus = [
+            {"content": "Return and refund policy", "metadata": {}},
+            {"content": "Payment methods", "metadata": {}},
+            {"content": "Seller listing regulations", "metadata": {}},
+        ]
+        with patch.object(task6_lexical_search, "CORPUS", corpus):
+            self.assertEqual(task6_lexical_search.lexical_search("zzzz-no-match"), [])
+
+    def test_empty_corpus_is_reloaded_after_markdown_is_added(self):
+        """A process started before Task 3 can search documents added later."""
+        from src import task6_lexical_search
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            corpus_dir = Path(temp_dir)
+            with (
+                patch.object(task6_lexical_search, "CORPUS", None),
+                patch.object(task6_lexical_search, "STANDARDIZED_DIR", corpus_dir),
+                patch.object(task6_lexical_search, "_CACHED_CORPUS", None),
+                patch.object(task6_lexical_search, "_CACHED_BM25", None),
+            ):
+                self.assertEqual(task6_lexical_search.lexical_search("refund"), [])
+                for index, text in enumerate(("Refund policy", "Payment methods", "Listing rules")):
+                    (corpus_dir / f"doc-{index}.md").write_text(text, encoding="utf-8")
+
+                results = task6_lexical_search.lexical_search("refund")
+
+        self.assertEqual(results[0]["content"], "Refund policy")
+
 
 # ===========================================================================
 # Task 7 — Reranking (6 điểm)
@@ -413,6 +462,22 @@ class TestTask7(unittest.TestCase):
         except NotImplementedError:
             self.skipTest("Chưa implement")
 
+    def test_rrf_rewards_a_document_found_by_both_rankers(self):
+        """Document xuất hiện ở cả dense và lexical lists phải đứng đầu."""
+        from src.task7_reranking import rerank_rrf
+
+        shared = {"content": "Refund policy", "score": 0.5, "metadata": {}}
+        results = rerank_rrf(
+            [
+                [shared, {"content": "Shipping guide", "score": 0.4, "metadata": {}}],
+                [{"content": "Payment methods", "score": 2.0, "metadata": {}}, shared],
+            ],
+            top_k=1,
+        )
+
+        self.assertEqual(results[0]["content"], "Refund policy")
+        self.assertAlmostEqual(results[0]["score"], 1 / 61 + 1 / 62)
+
 
 # ===========================================================================
 # Task 8 — PageIndex Vectorless (4 điểm)
@@ -443,6 +508,39 @@ class TestTask8(unittest.TestCase):
                 self.assertEqual(results[0].get("source"), "pageindex")
         except (NotImplementedError, Exception) as e:
             self.skipTest(f"PageIndex chưa sẵn sàng: {e}")
+
+    def test_parses_pageindex_results_without_network_access(self):
+        """PageIndex results được đổi về retrieval contract chung."""
+        from src import task8_pageindex_vectorless
+
+        class FakeClient:
+            def __init__(self, api_key):
+                self.api_key = api_key
+
+            def submit_query(self, doc_id, query):
+                return {"retrieval_id": f"retrieval-{doc_id}"}
+
+            def get_retrieval(self, retrieval_id):
+                return {
+                    "status": "completed",
+                    "retrieved_nodes": [
+                        {
+                            "relevant_contents": [
+                                [{"section_title": "Refunds", "relevant_content": "Refund within 15 days."}]
+                            ]
+                        }
+                    ]
+                }
+
+        with (
+            patch.object(task8_pageindex_vectorless, "PAGEINDEX_API_KEY", "test-key"),
+            patch.object(task8_pageindex_vectorless, "PAGEINDEX_DOCUMENT_IDS", ("doc-1",)),
+            patch.object(task8_pageindex_vectorless, "PageIndexClient", FakeClient),
+        ):
+            results = task8_pageindex_vectorless.pageindex_search("refund", top_k=1)
+
+        self.assertEqual(results[0]["content"], "Refund within 15 days.")
+        self.assertEqual(results[0]["source"], "pageindex")
 
 
 # ===========================================================================
@@ -502,6 +600,248 @@ class TestTask9(unittest.TestCase):
             self.assertIsInstance(results, list)
         except NotImplementedError:
             self.skipTest("Chưa implement")
+
+
+# ===========================================================================
+# Retrieval regression coverage — Tasks 6–9
+# ===========================================================================
+
+class TestRetrievalRegressions(unittest.TestCase):
+    def test_bm25_keeps_matching_zero_and_negative_scores(self):
+        from src import task6_lexical_search as task6
+
+        class Scores:
+            def get_scores(self, tokens):
+                return [0.0, -0.5, 0.0]
+
+        corpus = [
+            {"content": "refund policy", "metadata": {}},
+            {"content": "refund guide", "metadata": {}},
+            {"content": "payment methods", "metadata": {}},
+        ]
+        with (
+            patch.object(task6, "CORPUS", corpus),
+            patch.object(task6, "build_bm25_index", return_value=Scores()),
+        ):
+            results = task6.lexical_search("refund", top_k=3)
+
+        self.assertEqual([result["content"] for result in results], ["refund policy", "refund guide"])
+        self.assertEqual([result["score"] for result in results], [0.0, -0.5])
+
+    def test_bm25_rejects_no_overlap_and_invalid_input(self):
+        from src import task6_lexical_search as task6
+
+        corpus = [{"content": "refund policy", "metadata": {}}]
+        with patch.object(task6, "CORPUS", corpus):
+            self.assertEqual(task6.lexical_search("shipping"), [])
+            self.assertEqual(task6.lexical_search("", top_k=1), [])
+            self.assertEqual(task6.lexical_search("refund", top_k=0), [])
+            self.assertEqual(task6.lexical_search("refund", top_k="bad"), [])
+
+    def test_markdown_chunker_keeps_heading_context_and_stable_ids(self):
+        from src import task6_lexical_search as task6
+
+        markdown = "# Returns\n\nOverview paragraph.\n\n## Refunds\n\nRefund within 15 days."
+        chunks = task6._markdown_chunks(markdown, "legal/policy.md")
+
+        self.assertIn("# Returns", chunks[0]["content"])
+        self.assertIn("## Refunds", chunks[1]["content"])
+        self.assertIn("# Returns", chunks[1]["content"])
+        self.assertEqual([chunk["metadata"]["chunk_id"] for chunk in chunks], [
+            "legal/policy.md#chunk-0", "legal/policy.md#chunk-1"
+        ])
+
+    def test_markdown_chunker_splits_oversized_sections_without_dropping_text(self):
+        from src import task6_lexical_search as task6
+
+        body = "word " * (task6.MAX_CHUNK_CHARS // 2)
+        chunks = task6._markdown_chunks(f"# Policy\n\n{body}", "news/policy.md")
+
+        self.assertGreater(len(chunks), 1)
+        self.assertTrue(all("# Policy" in chunk["content"] for chunk in chunks))
+        self.assertEqual("".join(chunk["content"].replace("# Policy", "") for chunk in chunks).replace("\n", "").replace(" ", ""), body.replace(" ", ""))
+
+    def test_markdown_chunk_ids_distinguish_repeated_filenames(self):
+        from src import task6_lexical_search as task6
+
+        left = task6._markdown_chunks("# A\n\nContent", "legal/policy.md")[0]
+        right = task6._markdown_chunks("# B\n\nContent", "news/policy.md")[0]
+        self.assertNotEqual(left["metadata"]["chunk_id"], right["metadata"]["chunk_id"])
+
+    def test_bm25_override_cache_reuses_and_invalidates_index(self):
+        from src import task6_lexical_search as task6
+
+        corpus = [
+            {"content": "refund policy", "metadata": {}},
+            {"content": "payment methods", "metadata": {}},
+            {"content": "listing rules", "metadata": {}},
+        ]
+        original = task6.build_bm25_index
+        with (
+            patch.object(task6, "CORPUS", corpus),
+            patch.object(task6, "build_bm25_index", wraps=original) as build,
+        ):
+            task6.invalidate_bm25_cache()
+            task6.lexical_search("refund")
+            task6.lexical_search("refund")
+            self.assertEqual(build.call_count, 1)
+            task6.invalidate_bm25_cache()
+            task6.lexical_search("refund")
+            self.assertEqual(build.call_count, 2)
+
+    def test_rrf_keeps_empty_candidates_separate_and_tracks_sources(self):
+        from src.task7_reranking import rerank_rrf
+
+        results = rerank_rrf([
+            [
+                {"content": "", "score": 0.81, "score_type": "cosine", "retrieval_source": "dense", "metadata": {}},
+                {"content": "", "score": 0.42, "score_type": "cosine", "retrieval_source": "dense", "metadata": {}},
+            ],
+            [{"content": "", "score": 5.42, "score_type": "cosine", "retrieval_source": "sparse", "metadata": {}}],
+        ], top_k=3)
+
+        self.assertEqual(len(results), 3)
+        self.assertIn("dense", results[0]["raw_scores"])
+        self.assertEqual(results[0]["raw_scores"]["dense"]["score_type"], "cosine")
+        sparse_result = next(result for result in results if "sparse" in result["raw_scores"])
+        self.assertEqual(sparse_result["raw_scores"]["sparse"]["score"], 5.42)
+
+    def test_rerank_rejects_unimplemented_methods(self):
+        from src.task7_reranking import rerank
+
+        with self.assertRaisesRegex(ValueError, "Only RRF"):
+            rerank("refund", [], method="mmr")
+
+    def test_pageindex_ignores_partial_results_then_normalizes_completed_results(self):
+        from src import task8_pageindex_vectorless as task8
+
+        class FakeClient:
+            def submit_query(self, doc_id, query):
+                return {"retrieval_id": doc_id}
+
+            def get_retrieval(self, retrieval_id):
+                if not hasattr(self, "calls"):
+                    self.calls = 0
+                self.calls += 1
+                if self.calls == 1:
+                    return {"status": "processing", "retrieved_nodes": [{"relevant_contents": [[{"relevant_content": "partial"}]]}]}
+                return {"status": "completed", "retrieved_nodes": [{"relevant_contents": [[{"section_title": "Refunds", "relevant_content": "Refund policy", "page": 4}]]}]}
+
+        with (
+            patch.object(task8, "PAGEINDEX_API_KEY", "test-key"),
+            patch.object(task8, "PAGEINDEX_DOCUMENT_IDS", ("doc-1",)),
+            patch.object(task8, "PageIndexClient", lambda api_key: FakeClient()),
+            patch.object(task8, "POLL_INTERVAL_SECONDS", 0),
+        ):
+            results = task8.pageindex_search("refund", top_k=1)
+
+        self.assertEqual(results[0]["content"], "Refund policy")
+        self.assertEqual(results[0]["metadata"]["document_id"], "doc-1")
+        self.assertEqual(results[0]["metadata"]["page"], 4)
+        self.assertEqual(results[0]["metadata"]["source_file"], "doc-1")
+
+    def test_pageindex_ranks_relevant_passage_across_documents_and_survives_failures(self):
+        from src import task8_pageindex_vectorless as task8
+
+        class FakeClient:
+            def submit_query(self, doc_id, query):
+                return {"retrieval_id": doc_id}
+
+            def get_retrieval(self, retrieval_id):
+                if retrieval_id == "bad":
+                    return {"status": "failed"}
+                content = "General policy information" if retrieval_id == "doc-a" else "Refund policy requirements"
+                return {"status": "succeeded", "retrieved_nodes": [{"relevant_contents": [[{"section_title": "Policy", "relevant_content": content}]]}]}
+
+        with (
+            patch.object(task8, "PAGEINDEX_API_KEY", "test-key"),
+            patch.object(task8, "PAGEINDEX_DOCUMENT_IDS", ("doc-a", "bad", "doc-b")),
+            patch.object(task8, "PageIndexClient", lambda api_key: FakeClient()),
+        ):
+            results = task8.pageindex_search("refund policy", top_k=2)
+
+        self.assertEqual(results[0]["content"], "Refund policy requirements")
+        self.assertEqual(results[0]["score_type"], "pageindex_global_bm25")
+        self.assertEqual({result["metadata"]["document_id"] for result in results}, {"doc-a", "doc-b"})
+
+    def test_pageindex_timeout_returns_no_results(self):
+        from src import task8_pageindex_vectorless as task8
+
+        class FakeClient:
+            def submit_query(self, doc_id, query):
+                return {"retrieval_id": doc_id}
+
+            def get_retrieval(self, retrieval_id):
+                return {"status": "processing"}
+
+        with (
+            patch.object(task8, "PAGEINDEX_API_KEY", "test-key"),
+            patch.object(task8, "PAGEINDEX_DOCUMENT_IDS", ("doc-1",)),
+            patch.object(task8, "PageIndexClient", lambda api_key: FakeClient()),
+            patch.object(task8, "PER_DOCUMENT_TIMEOUT_SECONDS", 0),
+        ):
+            self.assertEqual(task8.pageindex_search("refund"), [])
+
+    def test_retrieve_uses_dense_cosine_only_for_fallback_and_preserves_schema(self):
+        from src import task9_retrieval_pipeline as task9
+
+        dense = [{"content": "dense refund", "score": 0.2, "score_type": "cosine", "metadata": {"chunk_id": "d1"}}]
+        sparse = [{"content": "sparse refund", "score": 999.0, "score_type": "bm25", "metadata": {"chunk_id": "s1"}}]
+        fallback = [{"content": "PageIndex refund", "score": 3.0, "score_type": "pageindex_global_bm25", "metadata": {}, "source": "pageindex"}]
+        with (
+            patch.object(task9, "semantic_search", return_value=dense),
+            patch.object(task9, "lexical_search", return_value=sparse),
+            patch.object(task9, "pageindex_search", return_value=fallback) as pageindex,
+        ):
+            results = task9.retrieve("refund", score_threshold=0.3)
+
+        pageindex.assert_called_once()
+        self.assertEqual(results[0]["retrieval_source"], "pageindex")
+        self.assertEqual(results[0]["metadata"]["page"], None)
+        self.assertEqual(results[0]["raw_scores"]["pageindex"]["score_type"], "pageindex_global_bm25")
+
+    def test_retrieve_does_not_fallback_for_high_dense_cosine_despite_low_rrf(self):
+        from src import task9_retrieval_pipeline as task9
+
+        dense = [{"content": "dense refund", "score": 0.9, "score_type": "cosine", "metadata": {"chunk_id": "d1"}}]
+        sparse = [{"content": "sparse refund", "score": 1.0, "score_type": "bm25", "metadata": {"chunk_id": "s1"}}]
+        with (
+            patch.object(task9, "semantic_search", return_value=dense),
+            patch.object(task9, "lexical_search", return_value=sparse),
+            patch.object(task9, "pageindex_search", return_value=[]) as pageindex,
+        ):
+            results = task9.retrieve("refund", score_threshold=0.3)
+
+        pageindex.assert_not_called()
+        self.assertEqual(results[0]["score_type"], "rrf")
+        self.assertIn("dense", results[0]["raw_scores"])
+
+    def test_retrieve_falls_back_when_dense_results_are_empty(self):
+        from src import task9_retrieval_pipeline as task9
+
+        fallback = [{"content": "PageIndex refund", "score": 1.0, "score_type": "pageindex_global_bm25", "metadata": {}, "source": "pageindex"}]
+        with (
+            patch.object(task9, "semantic_search", return_value=[]),
+            patch.object(task9, "lexical_search", return_value=[]),
+            patch.object(task9, "pageindex_search", return_value=fallback) as pageindex,
+        ):
+            results = task9.retrieve("refund")
+
+        pageindex.assert_called_once()
+        self.assertEqual(results[0]["retrieval_source"], "pageindex")
+
+    def test_retrieve_degrades_safely_when_dense_retrieval_is_unimplemented(self):
+        from src import task9_retrieval_pipeline as task9
+
+        sparse = [{"content": "Refund policy", "score": 2.0, "score_type": "bm25", "metadata": {"chunk_id": "s1"}}]
+        with (
+            patch.object(task9, "semantic_search", side_effect=NotImplementedError),
+            patch.object(task9, "lexical_search", return_value=sparse),
+            patch.object(task9, "pageindex_search", return_value=[]),
+        ):
+            results = task9.retrieve("refund")
+
+        self.assertEqual(results[0]["retrieval_source"], "hybrid")
 
 
 # ===========================================================================
